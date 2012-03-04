@@ -28,18 +28,28 @@ class track_transform_InputSpec(CommandLineInputSpec):
                                       desc='name of output .trk file', position=2)    
     
     source_volume = File(exists=True, argstr='-src %s', mandatory=True,
-                         desc='track source volume filename')
+                         desc= "source volume file that the original tracks are "
+                         "based on, usually dwi or b0 volume. must be in nifti format")
     
     reference_volume = File(exists=True, argstr='-ref %s', mandatory=True,
-                            desc='track source volume filename')
+                            desc='reference volume file that the tracks are registered'
+                            "to. must be in nifti format.")
+
     
     registration_matrix_file= File(exists=True, argstr='-reg %s', mandatory=True,
                                    desc='registration matrix file')    
     
     registration_type = traits.Enum('flirt', 'tkregister', argstr='-reg_type %s',
-                                     desc='registration type - ''flirt'' or ''tkregister''') 
+                                     desc= """-reg_type, --registration_type <type>
+                                     type of the registration matrix. valid inputs 
+                                     are 'flirt' or 'tkregister'. default is 'flirt'.""")
+
+
     
-    invert_reg = traits.Bool(argstr=' -invert_reg ', desc="invert reg")
+    invert_reg = traits.Bool(argstr=' -invert_reg ', desc="invert reg",
+                             """invert the registration matrix. for 
+                             convenience of inverse transformation.""")
+
 
 class track_transform_OutputSpec(TraitedSpec):
     
@@ -47,32 +57,24 @@ class track_transform_OutputSpec(TraitedSpec):
 
 class track_transform(CommandLine):
     """    
-    Trackvis instructions:
+    Apply fsl or freesurfer transform to trackvis .trk file, 
+    using the trackvis 'track_transform' function. Produces a 
+    command line call of the form 
     
-        Usage: track_transform INPUT_TRACK_FILE OUTPUT_TRACK_FILE [OPTION]...
-        [ temp note ]
-        [ temp note 2]
-          -src, --source_volume <filename> 
-                   source volume file that the original tracks are based on, usually 
-                   dwi or b0 volume. must be in nifti format.
-          -ref, --reference_volume <filename> 
-                   reference volume file that the tracks are registered to.
-                   must be in nifti format.
-          -reg, --registration_matrix_file <filename>
-                   registration matrix file from source to reference volume.
-          -invert_reg, --invert_registration_matrix
-                   invert the registration matrix. for convenience of inverse 
-                   transformation. 
-          -reg_type, --registration_type <type>
-                   type of the registration matrix. valid inputs are 'flirt' or
-                   'tkregister'. default is 'flirt'.
-          -h, --help
-                   display this help
-                 
-        Example: 
-        
-          track_transform tracks.trk tracks_new.trk -src dti_b0.nii -ref brain.nii -reg reg.mtx
+       track_transform INPUT_TRACK_FILE OUTPUT_TRACK_FILE [OPTION]...
 
+    
+    Examples
+    --------
+
+    >>> import nipype.interfaces.trackvis as tv
+    >>> tt = tv.track_transform()
+    >>> tt.inputs.input_track_file = <filename>
+    >>> tt.inputs.source_volume = <filename>
+    >>> tt.inputs.reference_volume = <filename>
+    >>> tt.inputs.registration_matrix_file = <filename>
+    >>> tt.run()                  # doctest: +SKIP
+ 
     """
     _cmd = 'track_transform '
     input_spec=track_transform_InputSpec
