@@ -4,7 +4,6 @@ utils.py - nipype interfaces for trackvis command line functionalities
 
                                                          JDG 03/03/2012  
     
-
 Contents:
 ---------
 
@@ -51,7 +50,7 @@ class track_transform(CommandLine):
     Trackvis instructions:
     
         Usage: track_transform INPUT_TRACK_FILE OUTPUT_TRACK_FILE [OPTION]...
-        
+        [ temp note ]
           -src, --source_volume <filename> 
                    source volume file that the original tracks are based on, usually 
                    dwi or b0 volume. must be in nifti format.
