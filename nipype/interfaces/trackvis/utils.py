@@ -51,6 +51,7 @@ class track_transform(CommandLine):
     
         Usage: track_transform INPUT_TRACK_FILE OUTPUT_TRACK_FILE [OPTION]...
         [ temp note ]
+        [ temp note 2]
           -src, --source_volume <filename> 
                    source volume file that the original tracks are based on, usually 
                    dwi or b0 volume. must be in nifti format.
