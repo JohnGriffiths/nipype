@@ -488,6 +488,10 @@ class TrackBootstrapInputSpec(TrackInputSpec):
 
     wildbsmodel = traits.Enum('dt', 'multiten', argstr='-wildbsmodel %s', desc='The model to fit to the data, for wild bootstrapping. The same model is used to generate the the wild bootstrap data. Must be "dt", which is the default.')
 
+    voxclassmap = File(argstr='-voxclassmap %s', exists=True, desc = 'Voxel classification map (see ' \
+                       'voxelclassify function); this is needed for twotensor (multiten) model, as voxel '\
+                       'classifications must be fixed, and are not re-determined dynamically.')
+
 class TrackBootstrap(Track):
     """
     Performs bootstrap streamline tractography using mulitple scans of the same subject
