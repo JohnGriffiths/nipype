@@ -237,10 +237,16 @@ class PicoPDFsInputSpec(StdOutCommandLineInputSpec):
 
     luts = File(exists=True, argstr='-luts %s',
         mandatory=False, position=3,
-        desc='Files containing the lookup tables.'\
-        'For tensor data, one lut must be specified for each type of inversion used in the image (one-tensor, two-tensor, three-tensor).'\
-        'For pds, the number of LUTs must match -numpds (it is acceptable to use the same LUT several times - see example, above).'\
-        'These LUTs may be generated with dtlutgen.')
+        desc='File containing the lookup table (when only one lookup table is to be used).')
+
+    luts_list = traits.List(exists=True, argstr='-luts %s', mandatory=False, position=3, 
+                            minlen=1, maxlen=3, desc='List of files containing lookup tables '\
+                            'for single or multi-fibre models.' \
+                            'For tensor data, one lut must be specified for each type of ' \
+                            'inversion used in the image (one-tensor, two-tensor, three-tensor).'\
+                            'For pds, the number of LUTs must match -numpds (it is acceptable '\
+                            'to use the same LUT several times - see example, above).'\
+                            'These LUTs may be generated with dtlutgen.')
 
     pdf = traits.Enum('watson', 'bingham', 'acg',
         argstr='-pdf %s', position=4, desc=' Specifies the PDF to use. There are three choices:'\
