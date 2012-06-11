@@ -5,8 +5,12 @@ datasynth.py - nipype wrapper for camino diffusion model simulations
         
 """
 from nipype.interfaces.base import (traits, TraitedSpec, File, StdOutCommandLine, 
-                                    StdOutCommandLineInputSpec, isdefined)
+                                    StdOutCommandLineInputSpec, isdefined,
+                                    BaseInterface, OutputMultiPath, BaseInterfaceInputSpec)
+
 # from nipype.utils.filemanip import split_filename
+import numpy as np
+import glob
 import os
 
 class AnalyticModelInputSpec(StdOutCommandLineInputSpec):
@@ -180,6 +184,13 @@ class MonteCarloInputSpec(StdOutCommandLineInputSpec):
                                    "generated. A trajfile contains the complete trajectories of all spins in a "\
                                    "given simulation and may be parsed into a set of measurements at a later date.")
 
+    substrateinfo_file = traits.Either(traits.Bool, traits.File(),hash_files=False, argstr='-substrateinfo > %s', units='NA', desc="Specifies the name of the substrate info file "\
+                                   "generated - suffix needs to be '.info'")
+    
+    crosssection_file  = traits.Either(traits.Bool, traits.File(),hash_files=False, argstr='-drawcrosssection > %s', units='NA', desc="Specifies the name of the cross section file "\
+                                   "generated - suffix needs to be '.gray'. Visualize with, e.g., ImageMagik 'Display' function.......")
+    
+    
     scan = traits.Int(argstr='-scan %d', units='NA', desc="This command reads the trajectories file specified "\
                       "and synthesise diffusion weighted data using myscheme.scheme. Due to the size of the files "\
                       "involved this will take at least several seconds and may take several minutes for larger files.")
@@ -223,7 +234,9 @@ class MonteCarloInputSpec(StdOutCommandLineInputSpec):
 class MonteCarloOutputSpec(TraitedSpec):
 
     synth_data = File(exists=True, desc='simulated_data')
-    trajectories_file = File(exists=True)
+    trajectories_file = File(desc='trajectories file')
+    substrateinfo_file = File(desc='substrateinfo_file')
+    crossection_file = File(desc='crosssection_file')
     
 class MonteCarlo(StdOutCommandLine):
     """
@@ -258,7 +271,7 @@ class MonteCarlo(StdOutCommandLine):
     
     def _gen_filename(self, name):
         if name is 'trajectories_file':
-            return 'MC.traj'
+            return 'MC_trajfile.traj'
         else:
             return super(MonteCarlo, self)._gen_filename(name)
     
@@ -287,6 +300,13 @@ class MonteCarlo(StdOutCommandLine):
             outputs['synth_data'] = os.path.abspath(self.inputs.out_file)
         else:   
             outputs['synth_data'] = os.path.abspath(self._gen_filename("out_file"))
+        
+        if isdefined(self.inputs.subtrateinfo_file) and self.inputs.substrateinfo_file:
+                outputs['substrateinfo_file'] = os.path.abspath(self.inputs.substrateinfo_file)
+        
+        if isdefined(self.inputs.crosssection_file) and self.inputs.crosssection_file:
+                outputs['crosssection_file'] = os.path.abspath(self.inputs.crosssection_file)
+            
         return outputs #self._outputs_from_inputs(outputs)
 
 
@@ -331,6 +351,63 @@ class ScanTrajfile(StdOutCommandLine):
         outfilename = self.inputs.out_file
         return outfilename
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+class PlotDataInputSpec(BaseInterfaceInputSpec):
+    
+    datafile = traits.File(desc = '.Bfloat file')
+    
+    schemefile = traits.File(desc = 'scheme file')
+    
+    outfile_name = traits.String(desc = 'name of new file')
+    
+
+class PlotDataOutputSpec(TraitedSpec):
+
+    figure = File(desc='plotted data')
+    
+class PlotData(BaseInterface):
+    '''   
+    Example:
+    -------
+    '''
+    
+    input_spec=PlotDataInputSpec
+    output_spec=PlotDataOutputSpec
+    
+    f = open(self.inputs.datafile)
+    f_dat = np.fromfile(f)
+        
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['figure'] = os.path.abspath(self._gen_outfilename())
+        return outputs
+    
+    def _gen_outfilename(self):
+        outfilename = self.inputs.out_file
+        return outfilename
+    
+
+"""    
+
 
 
 
