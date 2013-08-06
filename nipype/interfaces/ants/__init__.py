@@ -3,5 +3,15 @@
 
 """Top-level namespace for ants."""
 
-from .normalize import (BuildTemplate, WarpImageMultiTransform, GenWarpFields)
+# Registraiton programs
+from .registration import ANTS, Registration
 
+# Resampling Programs
+from resampling import ApplyTransforms, WarpImageMultiTransform, WarpTimeSeriesImageMultiTransform
+
+
+# Segmentation Programs
+from .segmentation import Atropos, N4BiasFieldCorrection
+
+# Utility Programs
+from .utils import AverageAffineTransform, AverageImages, MultiplyImages, JacobianDeterminant

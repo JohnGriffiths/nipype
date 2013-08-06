@@ -78,6 +78,7 @@ def test_bet():
         'center':             ('-c 54 75 80', [54, 75, 80]),
         'threshold':          ('-t', True),
         'mesh':               ('-e', True),
+        'surfaces':           ('-A', True)
         #'verbose':            ('-v', True),
         #'flags':              ('--i-made-this-up', '--i-made-this-up'),
             }
@@ -218,7 +219,8 @@ def test_flirt():
         # Skip mandatory inputs and the trait methods
         if key in ('trait_added', 'trait_modified', 'in_file', 'reference',
                    'environ', 'output_type', 'out_file', 'out_matrix_file',
-                   'in_matrix_file', 'apply_xfm', 'ignore_exception'):
+                   'in_matrix_file', 'apply_xfm', 'ignore_exception',
+                   'terminal_output', 'out_log', 'save_log'):
             continue
         param = None
         value = None
@@ -259,8 +261,10 @@ def test_flirt():
     flirter.inputs.out_file = ''.join(['foo', ext])
     flirter.inputs.out_matrix_file = ''.join(['bar', ext])
     outs = flirter._list_outputs()
-    yield assert_equal, outs['out_file'], flirter.inputs.out_file
-    yield assert_equal, outs['out_matrix_file'], flirter.inputs.out_matrix_file
+    yield assert_equal, outs['out_file'], \
+          os.path.join(os.getcwd(), flirter.inputs.out_file)
+    yield assert_equal, outs['out_matrix_file'], \
+          os.path.join(os.getcwd(), flirter.inputs.out_matrix_file)
 
     teardown_flirt(tmpdir)
 
@@ -499,8 +503,8 @@ def test_fugue():
                      phase_conjugate = dict(argstr='--phaseconj',),
                      phasemap_file = dict(argstr='--phasemap=%s',),
                      poly_order = dict(argstr='--poly=%d',),
-                     save_unmasked_fmap = dict(requires=['fmap_out_file'],argstr='--unmaskfmap=%s',),
-                     save_unmasked_shift = dict(requires=['shift_out_file'],argstr='--unmaskshift=%s',),
+                     save_unmasked_fmap = dict(requires=['fmap_out_file'],argstr='--unmaskfmap',),
+                     save_unmasked_shift = dict(requires=['shift_out_file'],argstr='--unmaskshift',),
                      shift_in_file = dict(argstr='--loadshift=%s',),
                      shift_out_file = dict(argstr='--saveshift=%s',),
                      smooth2d = dict(argstr='--smooth2=%.2f',),

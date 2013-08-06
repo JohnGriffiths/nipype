@@ -3,6 +3,7 @@
 
 import os
 from time import sleep
+import subprocess
 
 from .base import (SGELikeBatchManagerBase, logger, iflogger, logging)
 
@@ -18,36 +19,41 @@ class PBSPlugin(SGELikeBatchManagerBase):
     - template : template to use for batch job submission
     - qsub_args : arguments to be prepended to the job execution script in the
                   qsub call
+    - max_jobname_len: maximum length of the job name.  Default 15.
 
     """
 
+    # Addtional class variables
+    _max_jobname_len = 15
+    
     def __init__(self, **kwargs):
         template = """
 #PBS -V
         """
         self._retry_timeout = 2
         self._max_tries = 2
+        self._max_jobname_length = 15
         if 'plugin_args' in kwargs and kwargs['plugin_args']:
             if 'retry_timeout' in kwargs['plugin_args']:
                 self._retry_timeout = kwargs['plugin_args']['retry_timeout']
             if  'max_tries' in kwargs['plugin_args']:
                 self._max_tries = kwargs['plugin_args']['max_tries']
+            if  'max_jobname_len' in kwargs['plugin_args']:
+                self._max_jobname_len = kwargs['plugin_args']['max_jobname_len']
         super(PBSPlugin, self).__init__(template, **kwargs)
 
     def _is_pending(self, taskid):
-        cmd = CommandLine('qstat')
-        cmd.inputs.args = '%s' % taskid
-        # check pbs task
-        oldlevel = iflogger.level
-        iflogger.setLevel(logging.getLevelName('CRITICAL'))
-        result = cmd.run(ignore_exception=True)
-        iflogger.setLevel(oldlevel)
-        if 'Unknown Job Id' in result.runtime.stderr:
-            return False
-        return True
+        #  subprocess.Popen requires taskid to be a string
+        proc = subprocess.Popen(["qstat", str(taskid)],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        _, e = proc.communicate()
+        errmsg = 'Unknown Job Id' # %s' % taskid
+        return  errmsg not in e
 
     def _submit_batchtask(self, scriptfile, node):
-        cmd = CommandLine('qsub', environ=os.environ.data)
+        cmd = CommandLine('qsub', environ=os.environ.data,
+                          terminal_output='allatonce')
         path = os.path.dirname(scriptfile)
         qsubargs = ''
         if self._qsub_args:
@@ -72,6 +78,7 @@ class PBSPlugin(SGELikeBatchManagerBase):
         jobnameitems = jobname.split('.')
         jobnameitems.reverse()
         jobname = '.'.join(jobnameitems)
+        jobname = jobname[0:self._max_jobname_len]
         cmd.inputs.args = '%s -N %s %s' % (qsubargs,
                                            jobname,
                                            scriptfile)

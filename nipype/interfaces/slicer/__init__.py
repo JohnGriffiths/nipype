@@ -1,20 +1,9 @@
-from .cli_modules import (Add, AffineRegistration,
-                          BSplineDeformableRegistration, Cast, CheckerBoard,
-                          ComputeSUVBodyWeight, ConfidenceConnected,
-                          CurvatureAnisotropicDiffusion, DicomToNrrdConverter,
-                          ResampleDTI, dwiNoiseFilter, dwiUNLM, jointLMMSE,
-                          DiffusionTensorEstimation, DiffusionTensorMathematics,
-                          DiffusionTensorTest, DiffusionWeightedMasking,
-                          BRAINSFit, BRAINSDemonWarp, BRAINSROIAuto,
-                          BRAINSResample, VBRAINSDemonWarp,
-                          extractNrrdVectorIndex, gtractAnisotropyMap,
-                          gtractAverageBvalues, gtractClipAnisotropy,
-                          gtractCoRegAnatomy, gtractConcatDwi,
-                          gtractCopyImageOrientation, gtractCoregBvalues,
-                          gtractCostFastMarching, gtractImageConformity,
-                          gtractInvertBSplineTransform,
-                          gtractInvertDeformationField,
-                          gtractInvertRigidTransform, gtractResampleAnisotropy,
-                          gtractResampleB0, gtractResampleCodeImage,
-                          gtractResampleDWIInPlace, gtractTensor,
-                          gtractTransformToDeformationField)
+from diffusion import *
+from segmentation import *
+from filtering import *
+from utilities import EMSegmentTransformToNewFormat
+from surface import MergeModels, ModelToLabelMap, GrayscaleModelMaker, ProbeVolumeWithModel, LabelMapSmoothing, ModelMaker
+from quantification import *
+from legacy import *
+from registration import *
+from converters import DicomToNrrdConverter, OrientScalarVolume

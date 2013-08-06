@@ -2,12 +2,28 @@
 """
 
 import os
+import re
+import subprocess
+from time import sleep
 
 from .base import (SGELikeBatchManagerBase, logger, iflogger, logging)
 
 from nipype.interfaces.base import CommandLine
 
-from time import sleep
+def qsubSanitizeJobName(testjobname):
+    """ Ensure that qsub job names must begin with a letter.
+
+    Numbers and punctuation are  not allowed.
+
+    >>> qsubSanitizeJobName('01')
+    'J01'
+    >>> qsubSanitizeJobName('a01')
+    'a01'
+    """
+    if testjobname[0].isalpha():
+        return testjobname
+    else:
+        return 'J'+testjobname
 
 class SGEPlugin(SGELikeBatchManagerBase):
     """Execute using SGE (OGE not tested)
@@ -36,19 +52,16 @@ class SGEPlugin(SGELikeBatchManagerBase):
         super(SGEPlugin, self).__init__(template, **kwargs)
 
     def _is_pending(self, taskid):
-        cmd = CommandLine('qstat')
-        cmd.inputs.args = '-j %d' % taskid
-        # check sge task
-        oldlevel = iflogger.level
-        iflogger.setLevel(logging.getLevelName('CRITICAL'))
-        result = cmd.run(ignore_exception=True)
-        iflogger.setLevel(oldlevel)
-        if result.runtime.stdout.startswith('='):
-            return True
-        return False
+        #  subprocess.Popen requires taskid to be a string
+        proc = subprocess.Popen(["qstat", '-j', str(taskid)],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        o, _ = proc.communicate()
+        return o.startswith('=')
 
     def _submit_batchtask(self, scriptfile, node):
-        cmd = CommandLine('qsub', environ=os.environ.data)
+        cmd = CommandLine('qsub', environ=os.environ.data,
+                          terminal_output='allatonce')
         path = os.path.dirname(scriptfile)
         qsubargs = ''
         if self._qsub_args:
@@ -73,6 +86,7 @@ class SGEPlugin(SGELikeBatchManagerBase):
         jobnameitems = jobname.split('.')
         jobnameitems.reverse()
         jobname = '.'.join(jobnameitems)
+        jobname = qsubSanitizeJobName(jobname)
         cmd.inputs.args = '%s -N %s %s' % (qsubargs,
                                            jobname,
                                            scriptfile)
@@ -95,7 +109,9 @@ class SGEPlugin(SGELikeBatchManagerBase):
                 break
         iflogger.setLevel(oldlevel)
         # retrieve sge taskid
-        taskid = int(result.runtime.stdout.split(' ')[2])
+        lines = [line for line in result.runtime.stdout.split('\n') if line]
+        taskid = int(re.match("Your job ([0-9]*) .* has been submitted",
+                              lines[-1]).groups()[0])
         self._pending[taskid] = node.output_dir()
         logger.debug('submitted sge task: %d for node %s' % (taskid, node._id))
         return taskid

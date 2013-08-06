@@ -8,7 +8,7 @@ Introduction
 
 This script, dmri_group_connectivity_mrtrix.py, runs group-based connectivity analysis using
 the dmri.mrtrix.connectivity_mapping Nipype workflow. Further detail on the processing can be
-found in :ref:`dmri_connectivity_advanced. This tutorial can be run using:
+found in :doc:`dmri_connectivity_advanced`. This tutorial can be run using:
 
     python dmri_group_connectivity_mrtrix.py
 
@@ -107,7 +107,7 @@ The workflow is created given the information input about the groups and subject
 
     * nipype/workflows/dmri/mrtrix/group_connectivity.py
     * nipype/workflows/dmri/mrtrix/connectivity_mapping.py
-    * :ref:`dmri_connectivity_advanced`
+    * :doc:`dmri_connectivity_advanced`
 
 We set values for absolute threshold used on the fractional anisotropy map. This is done
 in order to identify single-fiber voxels. In brains with more damage, however, it may be necessary
@@ -139,12 +139,6 @@ for idx, group_id in enumerate(group_list.keys()):
                 bvals=[['subject_id', 'bvals']])
 
     l1pipeline = create_group_connectivity_pipeline(group_list, group_id, data_dir, subjects_dir, output_dir, info)
-
-    # This is used to demonstrate the ease through which different parameters can be set for each group.
-    if group_id == 'parkinsons':
-        l1pipeline.inputs.connectivity.mapping.threshold_FA.absolute_threshold_value = 0.5
-    else:
-        l1pipeline.inputs.connectivity.mapping.threshold_FA.absolute_threshold_value = 0.7
 
     # Here with invert the b-vectors in the Y direction and set the maximum harmonic order of the
     # spherical deconvolution step

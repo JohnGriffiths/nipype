@@ -56,12 +56,13 @@ import nipype.algorithms.misc as misc
 import nipype.interfaces.cmtk as cmtk
 import nipype.interfaces.dipy as dipy
 import inspect
-import os.path as op                      # system functions
+import os, os.path as op                      # system functions
 from nipype.workflows.dmri.fsl.dti import create_eddy_correct_pipeline
 from nipype.workflows.dmri.camino.connectivity_mapping import select_aparc_annot
 from nipype.utils.misc import package_check
 import warnings
 from nipype.workflows.dmri.connectivity.nx import create_networkx_pipeline, create_cmats_to_csv_pipeline
+from nipype.workflows.smri.freesurfer import create_tessellation_flow
 
 try:
     package_check('cmp')
@@ -81,6 +82,9 @@ Alternatively, the reconstructed subject data can be downloaded from:
 subjects_dir = op.abspath(op.join(op.curdir,'./subjects'))
 fs.FSCommand.set_default_subjects_dir(subjects_dir)
 fsl.FSLCommand.set_default_output_type('NIFTI')
+
+fs_dir = os.environ['FREESURFER_HOME']
+lookup_file = op.join(fs_dir,'FreeSurferColorLUT.txt')
 
 """
 This needs to point to the fdt folder you can find after extracting
@@ -135,16 +139,13 @@ FreeSurferSourceRH.inputs.hemi = 'rh'
 """
 Creating the workflow's nodes
 =============================
-"""
 
-"""
 Conversion nodes
 ----------------
-"""
 
-"""
 A number of conversion operations are required to obtain NIFTI files from the FreesurferSource for each subject.
 Nodes are used to convert the following:
+
     * Original structural image to NIFTI
     * Pial, white, inflated, and spherical surfaces for both the left and right hemispheres are converted to GIFTI for visualization in ConnectomeViewer
     * Parcellated annotation files for the left and right hemispheres are also converted to GIFTI
@@ -196,6 +197,7 @@ eddycorrect.inputs.inputnode.ref_num = 1
 
 """
 Tensors are fitted to each voxel in the diffusion-weighted image and from these three maps are created:
+
     * Major eigenvector in each voxel
     * Apparent diffusion coefficient
     * Fractional anisotropy
@@ -278,9 +280,7 @@ trk2tdi = pe.Node(interface=dipy.TrackDensityMap(),name='trk2tdi')
 """
 Structural segmentation nodes
 -----------------------------
-"""
 
-"""
 The following node identifies the transformation between the diffusion-weighted
 image and the structural image. This transformation is then applied to the tracts
 so that they are in the same space as the regions of interest.
@@ -328,7 +328,7 @@ look back at the processing parameters that were used.
 
 CFFConverter = pe.Node(interface=cmtk.CFFConverter(), name="CFFConverter")
 CFFConverter.inputs.script_files = op.abspath(inspect.getfile(inspect.currentframe()))
-giftiSurfaces = pe.Node(interface=util.Merge(8), name="GiftiSurfaces")
+giftiSurfaces = pe.Node(interface=util.Merge(9), name="GiftiSurfaces")
 giftiLabels = pe.Node(interface=util.Merge(2), name="GiftiLabels")
 niftiVolumes = pe.Node(interface=util.Merge(3), name="NiftiVolumes")
 fiberDataArrays = pe.Node(interface=util.Merge(4), name="FiberDataArrays")
@@ -344,14 +344,14 @@ cmats_to_csv = create_cmats_to_csv_pipeline(name='cmats_to_csv')
 NxStatsCFFConverter = pe.Node(interface=cmtk.CFFConverter(), name="NxStatsCFFConverter")
 NxStatsCFFConverter.inputs.script_files = op.abspath(inspect.getfile(inspect.currentframe()))
 
+tessflow = create_tessellation_flow(name='tessflow', out_format='gii')
+tessflow.inputs.inputspec.lookup_file = lookup_file
+
 """
 Connecting the workflow
 =======================
 Here we connect our processing pipeline.
-"""
 
-
-"""
 Connecting the inputs, FreeSurfer nodes, and conversions
 --------------------------------------------------------
 """
@@ -370,6 +370,9 @@ mapping.connect([(inputnode, FreeSurferSourceLH,[("subject_id","subject_id")])])
 
 mapping.connect([(inputnode, FreeSurferSourceRH,[("subjects_dir","subjects_dir")])])
 mapping.connect([(inputnode, FreeSurferSourceRH,[("subject_id","subject_id")])])
+
+mapping.connect([(inputnode, tessflow,[("subjects_dir","inputspec.subjects_dir")])])
+mapping.connect([(inputnode, tessflow,[("subject_id","inputspec.subject_id")])])
 
 mapping.connect([(inputnode, parcellate,[("subjects_dir","subjects_dir")])])
 mapping.connect([(inputnode, parcellate,[("subject_id","subject_id")])])
@@ -426,7 +429,6 @@ mapping.connect([(tensor2fa, MRmult_merge,[("FA","in1")])])
 mapping.connect([(tensor2fa, MRconvert_fa,[("FA","in_file")])])
 
 """
-
 This block creates the rough brain mask to be multiplied, mulitplies it with the
 fractional anisotropy image, and thresholds it to get the single-fiber voxels.
 """
@@ -516,6 +518,7 @@ mapping.connect([(mris_convertLHinflated, giftiSurfaces,[("converted","in5")])])
 mapping.connect([(mris_convertRHinflated, giftiSurfaces,[("converted","in6")])])
 mapping.connect([(mris_convertLHsphere, giftiSurfaces,[("converted","in7")])])
 mapping.connect([(mris_convertRHsphere, giftiSurfaces,[("converted","in8")])])
+mapping.connect([(tessflow, giftiSurfaces,[("outputspec.meshes","in9")])])
 
 mapping.connect([(mris_convertLHlabels, giftiLabels,[("converted","in1")])])
 mapping.connect([(mris_convertRHlabels, giftiLabels,[("converted","in2")])])

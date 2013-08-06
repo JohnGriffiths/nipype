@@ -80,7 +80,9 @@ Execution
 *remove_unnecessary_outputs*
 	This will remove any interface outputs not needed by the workflow. If the
 	required outputs from a node changes, rerunning the workflow will rerun the
-	node. (possible values: ``true`` and ``false``; default value: ``true``)
+	node. Outputs of leaf nodes (nodes whose outputs are not connected to any 
+	other nodes) will never be deleted independent of this parameter. (possible 
+	values: ``true`` and ``false``; default value: ``true``)
 
 *use_relative_paths*
 	Should the paths stored in results (and used to look for inputs)
@@ -93,7 +95,7 @@ Execution
     Perform the hash check on the job submission machine. This option minimizes
     the number of jobs submitted to a cluster engine or a multiprocessing pool
     to only those that need to be rerun. (possible values: ``true`` and
-    ``false``; default value: ``false``)
+    ``false``; default value: ``true``)
 
 *job_finished_timeout*
     When batch jobs are submitted through, SGE/PBS/Condor they could be killed
@@ -106,6 +108,11 @@ Execution
 	up. Doesn't work with IdentiInterface or any node that patches
 	data through (without copying) (possible values: ``true`` and
 	``false``; default value: ``false``)
+
+*stop_on_unknown_version*
+    If this is set to True, an underlying interface will raise an error, when no
+    version information is available. Please notify developers or submit a
+    patch.
 
 Example
 ~~~~~~~
