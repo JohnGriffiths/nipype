@@ -8,15 +8,19 @@
 """
 from nipype.interfaces.base import (CommandLineInputSpec, CommandLine, traits,
                                     TraitedSpec, File, StdOutCommandLine,
-                                    StdOutCommandLineInputSpec, isdefined)
-
+                                    StdOutCommandLineInputSpec, isdefined,
+                                    InputMultiPath)
 from nipype.utils.filemanip import split_filename
-
 import os
 
 class DTIFitInputSpec(StdOutCommandLineInputSpec):
     in_file = File(exists=True, argstr='%s', mandatory=True, position=1,
         desc='voxel-order data filename')
+
+    bgmask = File(argstr='-bgmask %s', exists=True,
+                  desc=('Provides the name of a file containing a background mask computed using, '
+                        'for example, FSL bet2 program. The mask file contains zero in background '
+                        'voxels and non-zero in foreground.'))
 
     scheme_file = File(exists=True, argstr='%s', mandatory=True, position=2,
         desc='Camino scheme file (b values / vectors, see camino.fsl2scheme)')
@@ -46,7 +50,7 @@ class DTIFit(StdOutCommandLine):
     >>> import nipype.interfaces.camino as cmon
     >>> fit = cmon.DTIFit()
     >>> fit.inputs.scheme_file = 'A.scheme'
-    >>> fit.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> fit.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> fit.run()                  # doctest: +SKIP
     """
     _cmd = 'dtfit'
@@ -61,6 +65,107 @@ class DTIFit(StdOutCommandLine):
     def _gen_outfilename(self):
         _, name , _ = split_filename(self.inputs.in_file)
         return name + '_DT.Bdouble'
+
+class DTMetricInputSpec(CommandLineInputSpec):
+    eigen_data = File(exists=True, argstr='-inputfile %s', mandatory=True,
+                      desc='voxel-order data filename')
+
+    metric = traits.Enum('fa','md','rd','l1', 'l2', 'l3', 'tr', 'ra', '2dfa','cl','cp','cs',
+                         argstr='-stat %s', mandatory=True,
+                         desc=('Specifies the metric to compute. Possible choices are: '
+                               '"fa", "md", "rd", "l1", "l2", "l3", "tr", "ra", "2dfa", "cl", "cp" or "cs".'))
+
+    inputdatatype = traits.Enum('double', 'float', 'long', 'int', 'short', 'char',
+                                argstr='-inputdatatype %s', usedefault=True,
+                                desc=('Specifies the data type of the input data. '
+                                      'The data type can be any of the following strings: '
+                                      '"char", "short", "int", "long", "float" or "double".'
+                                      'Default is double data type'))
+
+    outputdatatype = traits.Enum('double', 'float', 'long', 'int', 'short', 'char',
+                                 argstr='-outputdatatype %s', usedefault=True,
+                                 desc=('Specifies the data type of the output data. '
+                                       'The data type can be any of the following strings: '
+                                       '"char", "short", "int", "long", "float" or "double".'
+                                       'Default is double data type'))
+
+    data_header = File(argstr='-header %s', exists=True,
+                       desc=('A Nifti .nii or .nii.gz file containing the header information. '
+                             'Usually this will be the header of the raw data file from which '
+                             'the diffusion tensors were reconstructed.'))
+
+    outputfile = File(argstr='-outputfile %s', genfile=True,
+                      desc=('Output name. Output will be a .nii.gz file if data_header is provided and'
+                            'in voxel order with outputdatatype datatype (default: double) otherwise.'))
+
+class DTMetricOutputSpec(TraitedSpec):
+    metric_stats = File(exists=True, desc='Diffusion Tensor statistics of the chosen metric')
+
+class DTMetric(CommandLine):
+    """
+    Computes tensor metric statistics based on the eigenvalues l1 >= l2 >= l3
+    typically obtained from ComputeEigensystem.
+
+    The full list of statistics is:
+
+     <cl> = (l1 - l2) / l1 , a measure of linearity
+     <cp> = (l2 - l3) / l1 , a measure of planarity
+     <cs> = l3 / l1 , a measure of isotropy
+      with: cl + cp + cs = 1
+
+     <l1> = first eigenvalue
+     <l2> = second eigenvalue
+     <l3> = third eigenvalue
+
+     <tr> = l1 + l2 + l3
+     <md> = tr / 3
+     <rd> = (l2 + l3) / 2
+     <fa> = fractional anisotropy. (Basser et al, J Magn Reson B 1996)
+     <ra> = relative anisotropy (Basser et al, J Magn Reson B 1996)
+
+     <2dfa> = 2D FA of the two minor eigenvalues l2 and l3
+      i.e. sqrt( 2 * [(l2 - <l>)^2 + (l3 - <l>)^2] / (l2^2 + l3^2) )
+           with: <l> = (l2 + l3) / 2
+
+    Example
+    -------
+    Compute the CP planar metric as float data type.
+
+    >>> import nipype.interfaces.camino as cam
+    >>> dtmetric = cam.DTMetric()
+    >>> dtmetric.inputs.eigen_data = 'dteig.Bdouble'
+    >>> dtmetric.inputs.metric = 'cp'
+    >>> dtmetric.inputs.outputdatatype = 'float'
+    >>> dtmetric.run()                  # doctest: +SKIP
+    """
+    _cmd = 'dtshape'
+    input_spec=DTMetricInputSpec
+    output_spec=DTMetricOutputSpec
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['metric_stats'] = os.path.abspath(self._gen_outfilename())
+        return outputs
+
+    def _gen_outfilename(self):
+        return self._gen_outputfile()
+
+    def _gen_outputfile(self):
+        outputfile = self.inputs.outputfile
+        if not isdefined(outputfile):
+            outputfile = self._gen_filename('outputfile')
+        return outputfile
+
+    def _gen_filename(self, name):
+        if name == 'outputfile':
+            _, name , _ = split_filename(self.inputs.eigen_data)
+            metric = self.inputs.metric
+            datatype= self.inputs.outputdatatype
+            if isdefined(self.inputs.data_header):
+                filename = name + '_' + metric + '.nii.gz'
+            else:
+                filename = name + '_' + metric + '.B' + datatype
+        return filename
 
 class ModelFitInputSpec(StdOutCommandLineInputSpec):
     def _gen_model_options(): #@NoSelf
@@ -97,19 +202,19 @@ class ModelFitInputSpec(StdOutCommandLineInputSpec):
 
     residualmap = File(argstr='-residualmap %s', exists=True, desc='Specifies the name of the file to contain the weighted residual errors after computing a weighted linear tensor fit. One value is produced per measurement, in voxel order.The data type of this file is big-endian double. Images of the residuals for each measurement can be extracted with shredder.')
 
-    sigma = traits.Float(argstr='-sigma %s', desc='Specifies the standard deviation of the noise in the data. Required by the RESTORE algorithm.')
+    sigma = traits.Float(argstr='-sigma %G', desc='Specifies the standard deviation of the noise in the data. Required by the RESTORE algorithm.')
 
-    bgthresh = traits.Float(argstr='-bgthresh %s', desc='Sets a threshold on the average q=0 measurement to separate foreground and background. The program does not process background voxels, but outputs the same number of values in background voxels and foreground voxels. Each value is zero in background voxels apart from the exit code which is -1.')
+    bgthresh = traits.Float(argstr='-bgthresh %G', desc='Sets a threshold on the average q=0 measurement to separate foreground and background. The program does not process background voxels, but outputs the same number of values in background voxels and foreground voxels. Each value is zero in background voxels apart from the exit code which is -1.')
 
     bgmask = File(argstr='-bgmask %s', exists=True, desc='Provides the name of a file containing a background mask computed using, for example, FSL\'s bet2 program. The mask file contains zero in background voxels and non-zero in foreground.')
 
-    cfthresh = traits.Float(argstr='-csfthresh %s', desc='Sets a threshold on the average q=0 measurement to determine which voxels are CSF. This program does not treat CSF voxels any different to other voxels.')
+    cfthresh = traits.Float(argstr='-csfthresh %G', desc='Sets a threshold on the average q=0 measurement to determine which voxels are CSF. This program does not treat CSF voxels any different to other voxels.')
 
     fixedmodq = traits.List(traits.Float, argstr='-fixedmod %s', minlen=4, maxlen=4, desc='Specifies <M> <N> <Q> <tau> a spherical acquisition scheme with M measurements with q=0 and N measurements with |q|=Q and diffusion time tau. The N measurements with |q|=Q have unique directions. The program reads in the directions from the files in directory PointSets.')
 
     fixedbvalue = traits.List(traits.Float, argstr='-fixedbvalue %s', minlen=3, maxlen=3, desc='As above, but specifies <M> <N> <b>. The resulting scheme is the same whether you specify b directly or indirectly using -fixedmodq.')
 
-    tau = traits.Float(argstr='-tau %s', desc='Sets the diffusion time separately. This overrides the diffusion time specified in a scheme file or by a scheme index for both the acquisition scheme and in the data synthesis.')
+    tau = traits.Float(argstr='-tau %G', desc='Sets the diffusion time separately. This overrides the diffusion time specified in a scheme file or by a scheme index for both the acquisition scheme and in the data synthesis.')
 
 class ModelFitOutputSpec(TraitedSpec):
     fitted_data = File(exists=True, desc='output file of 4D volume in voxel order')
@@ -131,7 +236,7 @@ class ModelFit(StdOutCommandLine):
     >>> fit = cmon.ModelFit()
     >>> fit.model = 'dt'
     >>> fit.inputs.scheme_file = 'A.scheme'
-    >>> fit.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> fit.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> fit.run()                  # doctest: +SKIP
     """
     _cmd = 'modelfit'
@@ -160,7 +265,7 @@ class DTLUTGenInputSpec(StdOutCommandLineInputSpec):
         argstr='-frange %s', minlen=2, maxlen=2, position=1,
         units='NA')
 
-    step = traits.Float(argstr='-step %d', units='NA',
+    step = traits.Float(argstr='-step %f', units='NA',
         desc='Distance between points in the LUT.' \
         'For example, if lrange is 1 to 10 and the step is 0.1, LUT entries will be computed ' \
         'at L1 / L3 = 1, 1.1, 1.2 ... 10.0 and at L2 / L3 = 1.0, 1.1 ... L1 / L3.' \
@@ -169,7 +274,7 @@ class DTLUTGenInputSpec(StdOutCommandLineInputSpec):
     samples = traits.Int(argstr='-samples %d', units='NA',
         desc='The number of synthetic measurements to generate at each point in the LUT. The default is 2000.')
 
-    snr = traits.Float(argstr='-snr %d', units='NA',
+    snr = traits.Float(argstr='-snr %f', units='NA',
         desc='The signal to noise ratio of the unweighted (q = 0) measurements.'\
         'This should match the SNR (in white matter) of the images that the LUTs are used with.')
 
@@ -182,7 +287,7 @@ class DTLUTGenInputSpec(StdOutCommandLineInputSpec):
     inversion = traits.Int(argstr='-inversion %d', units='NA',
         desc='Index of the inversion to use. The default is 1 (linear single tensor inversion).')
 
-    trace = traits.Float(argstr='-trace %d', units='NA',
+    trace = traits.Float(argstr='-trace %G', units='NA',
         desc='Trace of the diffusion tensor(s) used in the test function in the LUT generation. The default is 2100E-12 m^2 s^-1.')
 
     scheme_file = File(argstr='-schemefile %s', mandatory=True, position=2,
@@ -233,20 +338,13 @@ class PicoPDFsInputSpec(StdOutCommandLineInputSpec):
     inputmodel = traits.Enum('dt', 'multitensor', 'pds',
         argstr='-inputmodel %s', position=2, desc='input model type', usedefault=True)
 
-    luts = File(exists=True, argstr='-luts %s',
-        mandatory=False, position=3,
-        desc='File containing the lookup table (when only one lookup table is to be used).')
+    luts = InputMultiPath(File(exists=True), argstr='-luts %s', mandatory=True,
+        desc='Files containing the lookup tables.'\
+        'For tensor data, one lut must be specified for each type of inversion used in the image (one-tensor, two-tensor, three-tensor).'\
+        'For pds, the number of LUTs must match -numpds (it is acceptable to use the same LUT several times - see example, above).'\
+        'These LUTs may be generated with dtlutgen.')
 
-    luts_list = traits.List(exists=True, argstr='-luts %s', mandatory=False, position=3, 
-                            minlen=1, maxlen=3, desc='List of files containing lookup tables '\
-                            'for single or multi-fibre models.' \
-                            'For tensor data, one lut must be specified for each type of ' \
-                            'inversion used in the image (one-tensor, two-tensor, three-tensor).'\
-                            'For pds, the number of LUTs must match -numpds (it is acceptable '\
-                            'to use the same LUT several times - see example, above).'\
-                            'These LUTs may be generated with dtlutgen.')
-
-    pdf = traits.Enum('watson', 'bingham', 'acg',
+    pdf = traits.Enum('bingham', 'watson', 'acg',
         argstr='-pdf %s', position=4, desc=' Specifies the PDF to use. There are three choices:'\
         'watson - The Watson distribution. This distribution is rotationally symmetric.'\
         'bingham - The Bingham distributionn, which allows elliptical probability density contours.'\
@@ -277,7 +375,7 @@ class PicoPDFs(StdOutCommandLine):
     >>> import nipype.interfaces.camino as cmon
     >>> pdf = cmon.PicoPDFs()
     >>> pdf.inputs.inputmodel = 'dt'
-    >>> pdf.inputs.luts = 'lut_file'
+    >>> pdf.inputs.luts = ['lut_file']
     >>> pdf.inputs.in_file = 'voxel-order_data.Bfloat'
     >>> pdf.run()                  # doctest: +SKIP
     """
@@ -297,9 +395,9 @@ class PicoPDFs(StdOutCommandLine):
 class TrackInputSpec(CommandLineInputSpec):
     in_file = File(exists=True, argstr='-inputfile %s', mandatory=True, position=1, desc='input data file')
 
-    seed_file = File(exists=True, argstr='-seedfile %s', mandatory=False, position=2, desc='seed file')
+    seed_file = File(exists=True, argstr='-seedfile %s', position=2, desc='seed file')
 
-    inputmodel = traits.Enum('dt', 'multitensor', 'pds', 'pico', 'bootstrap', 'ballstick', 'bayesdirac',
+    inputmodel = traits.Enum('dt', 'multitensor', 'sfpeak', 'pico', 'repbs_dt', 'repbs_multitensor', 'ballstick', 'wildbs_dt', 'bayesdirac', 'bayesdirac_dt',
         argstr='-inputmodel %s', desc='input model type', usedefault=True)
 
     inputdatatype = traits.Enum('float', 'double', argstr='-inputdatatype %s', desc='input file type')
@@ -309,6 +407,8 @@ class TrackInputSpec(CommandLineInputSpec):
     maxcomponents = traits.Int(argstr='-maxcomponents %d', units='NA',
         desc="The maximum number of tensor components in a voxel. This determines the size of the input file and does not say anything about the voxel classification. The default is 2 if the input model is multitensor and 1 if the input model is dt.")
 
+    numpds = traits.Int(argstr='-numpds %d', units='NA', desc="The maximum number of PDs in a voxel for input models sfpeak and pico. The default is 3 for input model sfpeak and 1 for input model pico. This option determines the size of the voxels in the input file and does not affect tracking. For tensor data, use the -maxcomponents option.")
+
     data_dims = traits.List(traits.Int, desc='data dimensions in voxels',
         argstr='-datadims %s', minlen=3, maxlen=3,
         units='voxels')
@@ -317,11 +417,11 @@ class TrackInputSpec(CommandLineInputSpec):
         argstr='-voxeldims %s', minlen=3, maxlen=3,
         units='mm')
 
-    ipthresh = traits.Float(argstr='-ipthresh %s', desc='Curvature threshold for tracking, expressed as the minimum dot product between two streamline orientations calculated over the length of a voxel. If the dot product between the previous and current directions is less than this threshold, then the streamline terminates. The default setting will terminate fibres that curve by more than 80 degrees. Set this to -1.0 to disable curvature checking completely.')
+    ipthresh = traits.Float(argstr='-ipthresh %f', desc='Curvature threshold for tracking, expressed as the minimum dot product between two streamline orientations calculated over the length of a voxel. If the dot product between the previous and current directions is less than this threshold, then the streamline terminates. The default setting will terminate fibres that curve by more than 80 degrees. Set this to -1.0 to disable curvature checking completely.')
 
-    curvethresh = traits.Float(argstr='-curvethresh %s', desc='Curvature threshold for tracking, expressed as the maximum angle (in degrees) between between two streamline orientations calculated over the length of a voxel. If the angle is greater than this, then the streamline terminates.')
+    curvethresh = traits.Float(argstr='-curvethresh %f', desc='Curvature threshold for tracking, expressed as the maximum angle (in degrees) between between two streamline orientations calculated over the length of a voxel. If the angle is greater than this, then the streamline terminates.')
 
-    anisthresh = traits.Float(argstr='-anisthresh %s', desc='Terminate fibres that enter a voxel with lower anisotropy than the threshold.')
+    anisthresh = traits.Float(argstr='-anisthresh %f', desc='Terminate fibres that enter a voxel with lower anisotropy than the threshold.')
 
     anisfile = File(argstr='-anisfile %s', exists=True, desc='File containing the anisotropy map. This is required to apply an anisotropy threshold with non tensor data. If the map issupplied it is always used, even in tensor data.')
 
@@ -332,7 +432,7 @@ class TrackInputSpec(CommandLineInputSpec):
         desc='output data file')
 
     output_root = File(exists=False, argstr='-outputroot %s',
-        mandatory=False, position= -1,
+        position= -1,
         desc='root directory for output')
 
 class TrackOutputSpec(TraitedSpec):
@@ -383,7 +483,7 @@ class TrackDT(Track):
 
     >>> import nipype.interfaces.camino as cmon
     >>> track = cmon.TrackDT()
-    >>> track.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> track.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> track.inputs.seed_file = 'seed_mask.nii'
     >>> track.run()                 # doctest: +SKIP
     """
@@ -393,8 +493,6 @@ class TrackDT(Track):
         return super(TrackDT, self).__init__(command, **inputs)
 
 class TrackPICoInputSpec(TrackInputSpec):
-    numpds = traits.Int(argstr='-numpds %d', units='NA', desc="The maximum number of PDs in a voxel. The default is 1 for input model pico. This option determines the size of the voxels in the input file and does not affect tracking.")
-
     pdf = traits.Enum('bingham', 'watson', 'acg', argstr='-pdf %s', desc='Specifies the model for PICo parameters. The default is "bingham.')
 
     iterations = traits.Int(argstr='-iterations %d', units='NA', desc="Number of streamlines to generate at each seed point. The default is 5000.")
@@ -420,9 +518,13 @@ class TrackPICo(Track):
         return super(TrackPICo, self).__init__(command, **inputs)
 
 class TrackBayesDiracInputSpec(TrackInputSpec):
-    scheme_file = File(argstr='-schemefile %s', mandatory=True, exist=True, desc='The scheme file corresponding to the data being processed.')
+    scheme_file = File(argstr='-schemefile %s', mandatory=True, exists=True,
+                       desc=('The scheme file corresponding to the data being '
+                             'processed.'))
 
-    iterations = traits.Int(argstr='-iterations %d', units='NA', desc="Number of streamlines to generate at each seed point. The default is 5000.")
+    iterations = traits.Int(argstr='-iterations %d', units='NA',
+                            desc=("Number of streamlines to generate at each "
+                                  "seed point. The default is 5000."))
 
     pdf = traits.Enum('bingham', 'watson', 'acg', argstr='-pdf %s', desc='Specifies the model for PICo priors (not the curvature priors). The default is "bingham".')
 
@@ -430,9 +532,9 @@ class TrackBayesDiracInputSpec(TrackInputSpec):
 
     datamodel = traits.Enum('cylsymmdt', 'ballstick', argstr='-datamodel %s', desc='Model of the data for Bayesian tracking. The default model is "cylsymmdt", a diffusion tensor with cylindrical symmetry about e_1, ie L1 >= L_2 = L_3. The other model is "ballstick", the partial volume model (see ballstickfit).')
 
-    curvepriork = traits.Float(argstr='-curvepriork %s', desc='Concentration parameter for the prior distribution on fibre orientations given the fibre orientation at the previous step. Larger values of k make curvature less likely.')
+    curvepriork = traits.Float(argstr='-curvepriork %G', desc='Concentration parameter for the prior distribution on fibre orientations given the fibre orientation at the previous step. Larger values of k make curvature less likely.')
 
-    curvepriorg = traits.Float(argstr='-curvepriorg %s', desc='Concentration parameter for the prior distribution on fibre orientations given the fibre orientation at the previous step. Larger values of g make curvature less likely.')
+    curvepriorg = traits.Float(argstr='-curvepriorg %G', desc='Concentration parameter for the prior distribution on fibre orientations given the fibre orientation at the previous step. Larger values of g make curvature less likely.')
 
     extpriorfile = File(exists=True, argstr='-extpriorfile %s', desc='Path to a PICo image produced by picopdfs. The PDF in each voxel is used as a prior for the fibre orientation in Bayesian tracking. The prior image must be in the same space as the diffusion data.')
 
@@ -447,7 +549,7 @@ class TrackBayesDirac(Track):
 
     >>> import nipype.interfaces.camino as cmon
     >>> track = cmon.TrackBayesDirac()
-    >>> track.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> track.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> track.inputs.seed_file = 'seed_mask.nii'
     >>> track.inputs.scheme_file = 'bvecs.scheme'
     >>> track.run()                  # doctest: +SKIP
@@ -478,23 +580,15 @@ class TrackBallStick(Track):
         return super(TrackBallStick, self).__init__(command, **inputs)
 
 class TrackBootstrapInputSpec(TrackInputSpec):
-    scheme_file = File(argstr='-schemefile %s', mandatory=True, exist=True, desc='The scheme file corresponding to the data being processed.')
+    scheme_file = File(argstr='-schemefile %s', mandatory=True, exists=True, desc='The scheme file corresponding to the data being processed.')
 
     iterations = traits.Int(argstr='-iterations %d', units='NA', desc="Number of streamlines to generate at each seed point.")
 
     inversion = traits.Int(argstr='-inversion %s', desc = 'Tensor reconstruction algorithm for repetition bootstrapping. Default is 1 (linear reconstruction, single tensor).')
 
-    bsdatafiles = traits.List(File, mandatory=True, exists=True, argstr='-bsdatafile %s', desc='Specifies files containing raw data for repetition bootstrapping. Use -inputfile for wild bootstrap data.')
-
-    bsmodel = traits.Enum('dt', 'multitensor', argstr = '-bsmodel %s', desc = 'Model to fit to bootstrap data. This is used for repetition bootstrapping. May be "dt" (default) or "multitensor". This option may be omitted if -inversion is specified.')
+    bsdatafiles = traits.List(File(exists=True), mandatory=True, argstr='-bsdatafile %s', desc='Specifies files containing raw data for repetition bootstrapping. Use -inputfile for wild bootstrap data.')
 
     bgmask = File(argstr='-bgmask %s', exists=True, desc = 'Provides the name of a file containing a background mask computed using, for example, FSL\'s bet2 program. The mask file contains zero in background voxels and non-zero in foreground.')
-
-    wildbsmodel = traits.Enum('dt', 'multiten', argstr='-wildbsmodel %s', desc='The model to fit to the data, for wild bootstrapping. The same model is used to generate the the wild bootstrap data. Must be "dt", which is the default.')
-
-    voxclassmap = File(argstr='-voxclassmap %s', exists=True, desc = 'Voxel classification map (see ' \
-                       'voxelclassify function); this is needed for twotensor (multiten) model, as voxel '\
-                       'classifications must be fixed, and are not re-determined dynamically.')
 
 class TrackBootstrap(Track):
     """
@@ -505,6 +599,7 @@ class TrackBootstrap(Track):
 
     >>> import nipype.interfaces.camino as cmon
     >>> track = cmon.TrackBootstrap()
+    >>> track.inputs.inputmodel='repbs_dt'
     >>> track.inputs.scheme_file = 'bvecs.scheme'
     >>> track.inputs.bsdatafiles = ['fitted_data1.Bfloat', 'fitted_data2.Bfloat']
     >>> track.inputs.seed_file = 'seed_mask.nii'
@@ -514,14 +609,13 @@ class TrackBootstrap(Track):
     input_spec = TrackBootstrapInputSpec
 
     def __init__(self, command=None, **inputs):
-        inputs["inputmodel"] = "bootstrap"
         return super(TrackBootstrap, self).__init__(command, **inputs)
 
 class ComputeMeanDiffusivityInputSpec(CommandLineInputSpec):
     in_file = File(exists=True, argstr='< %s', mandatory=True, position=1,
         desc='Tensor-fitted data filename')
 
-    scheme_file = File(exists=True, argstr='%s', mandatory=False, position=2,
+    scheme_file = File(exists=True, argstr='%s', position=2,
         desc='Camino scheme file (b values / vectors, see camino.fsl2scheme)')
 
     out_file = File(argstr="> %s", position=-1, genfile=True)
@@ -555,7 +649,7 @@ class ComputeMeanDiffusivity(StdOutCommandLine):
 
     >>> import nipype.interfaces.camino as cmon
     >>> md = cmon.ComputeMeanDiffusivity()
-    >>> md.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> md.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> md.inputs.scheme_file = 'A.scheme'
     >>> md.run()                  # doctest: +SKIP
     """
@@ -576,7 +670,7 @@ class ComputeFractionalAnisotropyInputSpec(StdOutCommandLineInputSpec):
     in_file = File(exists=True, argstr='< %s', mandatory=True, position=1,
         desc='Tensor-fitted data filename')
 
-    scheme_file = File(exists=True, argstr='%s', mandatory=False, position=2,
+    scheme_file = File(exists=True, argstr='%s', position=2,
         desc='Camino scheme file (b values / vectors, see camino.fsl2scheme)')
 
     inputmodel = traits.Enum('dt', 'twotensor', 'threetensor', 'multitensor',
@@ -614,7 +708,7 @@ class ComputeFractionalAnisotropy(StdOutCommandLine):
 
     >>> import nipype.interfaces.camino as cmon
     >>> fa = cmon.ComputeFractionalAnisotropy()
-    >>> fa.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> fa.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> fa.inputs.scheme_file = 'A.scheme'
     >>> fa.run()                  # doctest: +SKIP
     """
@@ -629,13 +723,13 @@ class ComputeFractionalAnisotropy(StdOutCommandLine):
 
     def _gen_outfilename(self):
         _, name , _ = split_filename(self.inputs.in_file)
-        return name + '_FA.img' #Need to change to self.inputs.outputdatatype
+        return name + '_FA.Bdouble' #Need to change to self.inputs.outputdatatype
 
 class ComputeTensorTraceInputSpec(StdOutCommandLineInputSpec):
     in_file = File(exists=True, argstr='< %s', mandatory=True, position=1,
         desc='Tensor-fitted data filename')
 
-    scheme_file = File(exists=True, argstr='%s', mandatory=False, position=2,
+    scheme_file = File(exists=True, argstr='%s', position=2,
         desc='Camino scheme file (b values / vectors, see camino.fsl2scheme)')
 
     inputmodel = traits.Enum('dt', 'twotensor', 'threetensor', 'multitensor',
@@ -675,7 +769,7 @@ class ComputeTensorTrace(StdOutCommandLine):
 
     >>> import nipype.interfaces.camino as cmon
     >>> trace = cmon.ComputeTensorTrace()
-    >>> trace.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> trace.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> trace.inputs.scheme_file = 'A.scheme'
     >>> trace.run()                 # doctest: +SKIP
     """
@@ -698,11 +792,21 @@ class ComputeEigensystemInputSpec(StdOutCommandLineInputSpec):
 
     inputmodel = traits.Enum('dt', 'multitensor', argstr='-inputmodel %s', desc='Specifies the model that the input data contains parameters for. Possible model types are: "dt" (diffusion-tensor data) and "multitensor"')
 
-    maxcomponents = traits.Int(argstr='-maxcomponents %s', desc='The maximum number of tensor components in a voxel of the input data.')
+    maxcomponents = traits.Int(argstr='-maxcomponents %d', desc='The maximum number of tensor components in a voxel of the input data.')
 
-    inputdatatype = traits.Enum("double", "char", "short", "int", "long", "float", argstr='-inputdatatype %s', desc='Specifies the data type of the input file. The data type can be any of the following strings: "char", "short", "int", "long", "float" or "double".')
+    inputdatatype = traits.Enum('double', 'float', 'long', 'int', 'short', 'char',
+                                 argstr='-inputdatatype %s', usedefault=True,
+                                 desc=('Specifies the data type of the input data. '
+                                       'The data type can be any of the following strings: '
+                                       '"char", "short", "int", "long", "float" or "double".'
+                                       'Default is double data type'))
 
-    outputdatatype = traits.Enum("double", "char", "short", "int", "long", "float", argstr='-outputdatatype %s', desc='Specifies the data type of the output data. The data type can be any of the following strings: "char", "short", "int", "long", "float" or "double".')
+    outputdatatype = traits.Enum('double', 'float', 'long', 'int', 'short', 'char',
+                                 argstr='-outputdatatype %s', usedefault=True,
+                                 desc=('Specifies the data type of the output data. '
+                                       'The data type can be any of the following strings: '
+                                       '"char", "short", "int", "long", "float" or "double".'
+                                       'Default is double data type'))
 
 class ComputeEigensystemOutputSpec(TraitedSpec):
     eigen = File(exists=True, desc='Trace of the diffusion tensor')
@@ -724,7 +828,7 @@ class ComputeEigensystem(StdOutCommandLine):
 
     >>> import nipype.interfaces.camino as cmon
     >>> dteig = cmon.ComputeEigensystem()
-    >>> dteig.inputs.in_file = 'tensor_fitted_data.Bfloat'
+    >>> dteig.inputs.in_file = 'tensor_fitted_data.Bdouble'
     >>> dteig.run()                  # doctest: +SKIP
     """
     _cmd = 'dteig'
@@ -738,298 +842,5 @@ class ComputeEigensystem(StdOutCommandLine):
 
     def _gen_outfilename(self):
         _, name , _ = split_filename(self.inputs.in_file)
-        return name + "_Eigen.img"     #Need to change to self.inputs.outputdatatype
-
-
-
-"""
-JG new additions still under development:
-
-    - sfpeaks
-    - sfpicocalibdata
-    - sflutgen
-    - mesd
-
-"""
-
-
-class SfPeaksInputSpec(StdOutCommandLineInputSpec):
-    
-    in_file = File(exists=True, argstr='-inputfile %s', mandatory=True, position=1,
-        desc='spherical function filename')
-    
-    scheme_file = File(exists=True, argstr=' -schemefile %s',
-        desc='Camino scheme file (b values / vectors, see camino.fsl2scheme)')
-  
-    inputmodel = traits.Enum('sh', 'maxent', 'rbf', argstr='-inputmodel %s',mandatory=True, 
-    desc="Tells the program what type of functions are input." \
-    "Currently supported options are:" \
-            "'sh'       - Spherical harmonic series. Specify the maximum order of the SH series with the" \
-        "-order option if different from the default of 4." \
-        "'maxent' - Maximum entropy representations output by mesd.The reconstruction directions" \
-        "passed to mesd must be specified. By default this is the same set of gradient" \
-        "directions (excluding zero gradients) in the scheme file, so specify " \
-        "-schemefile unless -mepointset was passed to mesd" \
-        "'rbf'       - Sums of radial basis functions. Specify the pointset with -rbfpointset if " \
-        "different from the default, see qballmx(1).")
-        
-    numpds = traits.Int(argstr='-numpds %s',desc='The largest number of peak directions to output in each voxel')
-    
-    noconsistencycheck = traits.Bool(argstr=' -noconsistencycheck', desc="Turns off the consistency check. The output shows all consistencies as true.")
-
-    searchradius=traits.Float(argstr=' -searchradius %s',desc='The search radius in the peak finding algorithm. The default is 0.4 (see notes under option -density)')
-    
-    
-    density=traits.Int(argstr=' -density %s',desc='The number of randomly rotated icosahedra to use in constructing the set of points for random sampling in the peak finding algorithm. Default is 1000, which works well for very spiky maxent functions. For other types of function, it is reasonable to set the density much lower and increase the search radius slightly, which speeds up the computation.')
-        
-    pointset=traits.Int(argstr=' -pointset %s',desc='Tells the program to sample using an evenly distributed set of points instead. The integer can be 0, 1, ..., 7. Index 0 gives 1082 points, 1 gives 1922, 2 gives 3002, 3 gives 4322, 4 gives 5882, 5 gives 8672, 6 gives 12002, 7 gives 15872.')
-    
-    pdthresh=traits.Float(argstr=' -pdthresh %s', desc='Base threshold on the actual peak direction strength divided by the mean of the function. The default is 1.0 (the peak must be equal or greater than the mean).')
-    
-    stdsfrommean=traits.Int(argstr=' -stdsfrommean %s',desc='This is the number of standard deviations of the function to be added to the pdThresh in the peak directions pruning.')
-    
-    mepointset=traits.Int(argstr=' -mepointset %s',desc='Use a set of directions other than those in the scheme file for the deconvolution kernel. The number refers to the number of directions on the unit sphere. For example, "-mepointset 54" uses the directions in "camino/PointSets/Elec054.txt". Use this option only if you told mesd to use a custom set of directions with the same option. Otherwise, specify the scheme file with -schemefile. Index of the point set camino/PointSets/Elec???.txt')
-
-    sf_filter = traits.List(argstr= '-filter %s', minlen=2, maxlen=2, desc = "two-component list specifying a) filter name,and b) filter parameter. Options are:"\
-    "Filter name             Filter parameters"\
-    "SPIKE                   bd (Product of the b-value and the"\
-    "            diffusivity along the fibre.)"\
-    "PAS                             r")\
-
-    inputdatatype = traits.Enum('float', 'char', 'short', 'int', 'long', 'double', argstr='-inputdatatype %s',desc='Specifies the data type of the input file: "char", "short", "int", "long", "float" or "double". The input file must have BIG-ENDIAN ordering. By default, the input type is "float".')
-
-    out_type = traits.Enum("float", "char", "short", "int", "long", "double", argstr='-outputdatatype %s',usedefault=True,desc= "Can be ""char"", ""short"", ""int"", ""long"", ""float"" or ""double")
-
-class SfPeaksOutputSpec(TraitedSpec):
-    SfPeaks_file = File(exists=True, desc='SfPeaks_file')
-
-class SfPeaks(StdOutCommandLine):
-    """
-    Description
-    """
-    _cmd = 'sfpeaks'
-    input_spec=SfPeaksInputSpec
-    output_spec=SfPeaksOutputSpec
-        
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        if not isdefined(self.inputs.out_file):
-            outputs['SfPeaks_file'] = os.path.abspath(self._gen_outfilename())
-        else:
-            outputs['SfPeaks_file'] = self.inputs.out_file
-        return outputs
-    
-    def _gen_outfilename(self):
-        _, name , _ = split_filename(self.inputs.in_file)
-        return name + '.B'+ self.inputs.out_type 
-    
-    """
-    def _run_interface(self, runtime):
-        if not isdefined(self.inputs.out_file):
-            self.inputs.out_file = os.path.abspath(self._gen_outfilename())
-        runtime = super(SfPeaks, self)._run_interface(runtime)
-        if runtime.stderr:
-            self.raise_exception(runtime)
-        return runtime
-    """
-
-
-
-class SfPicoCalibDataInputSpec(StdOutCommandLineInputSpec):    
-    
-    in_file = File(exists=True, argstr='-inputfile %s', mandatory=True, position=1,
-    desc='-inputfile <input filename> See modelfit(1).')
-    
-    out_type = traits.Enum("float", "char", "short", "int", "long", "double", argstr='-outputdatatype %s',usedefault=True,desc='"i.e. Bfloat". Can be "char", "short", "int", "long", "float" or "double"')
-
-    scheme_file = File(exists=True, argstr='-schemefile %s', mandatory=True,
-    desc='-schemefile <filename> See modelfit(1).')
-
-    info_outputfile = traits.String(argstr='-infooutputfile %s', mandatory=True,
-        desc='-infooutputfile <information output filename> The name to be given to the information output filename')
-    
-    outputfilestem = traits.String(argstr = '-outputfilestem %s', desc="-outputfilestem <output filename> See modelfit(1)", mandatory=True)
-     
-    """
-    -trace <the trace> See datasynth(1). 
-    
-    -onedtfarange <the fa range for the single tensor case> This flag is used to provide the minimum and maximum fa for the single tensor synthetic data
-    
-    -onedtfastep <the fa step size for the single tensor> controls how many steps there are between the minimum and maximum fa settings
-    
-    -twodtfarange <the fa range for the two tensor case> This flag is used to provide the minimum and maximum fa for the two tensor synthetic data. The fa is varied for both tensors to give all the different permutations
-    
-    -twodtfastep <the fa step size for the two tensor case> controls how many steps there are between the minimum and maximum fa settings for the two tensor cases
-    
-    -twodtanglerange <the crossing angle range for the two fibre cases> Use this flag to specify the minimum and maximum crossing angles between the two fibres
-    
-    -twodtanglestep <the crossing angle step size> controls how many steps there are between the minimum and maximum crossing angles for the two tensor cases
-    
-    -twodtmixmax <mixing parameter> controls the proportion of one fibre population to the other. the minimum mixing parameter is (1 - twodtmixmax)
-    
-    -twodtmixstep <the mixing parameter step size for the two tensor case> Used to specify how many mixing parameter increments to use
-    
-    -snr <S> See datasynth(1). 
-    
-    -seed <seed> See datasynth(1). 
-    """
-
-class SfPicoCalibDataOutputSpec(TraitedSpec):    
-    SfPicoCalibData_file = File(exists=True, desc='SfPicoCalibData_file')
-
-class SfPicoCalibData(StdOutCommandLine):
-    """
-    add docu here
-    """
-    _cmd = 'sfpicocalibdata'
-    input_spec=SfPicoCalibDataInputSpec
-    output_spec=SfPicoCalibDataOutputSpec
-    
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        if not isdefined(self.inputs.out_file):
-            outputs['SfPicoCalibData_file'] = os.path.abspath(self._gen_outfilename())
-        else:
-            outputs['SfPicoCalibData_file'] = self.inputs.out_file
-        return outputs
-
-    def _gen_outfilename(self):
-        _, name , _ = split_filename(self.inputs.in_file)
-        return name + '.B'+ self.inputs.out_type 
-    
-
-
-class SfLUTGenInputSpec(StdOutCommandLineInputSpec):
-    
-    in_file = File(exists=True, argstr='-inputfile %s', mandatory=True, position=1,
-    desc='calibration data file')
-    #    -binincsize <bin increment size> Sets the size of the bins. In the case of 2D histograms such as the Bingham, the bins are always square. Default is 1.    
-    #    -minvectsperbin <minimum direction vectors per bin> Specifies the minimum number of fibre-orientation estimates a bin must contain before it is used in the lut line/surface generation. Default is 50. If you get the error "no fibre-orientation estimates in histogram!", the calibration data set is too small to get enough samples in any of the histogram bins. You can decrease the minimum number per bin to get things running in quick tests, but the statistics will not be reliable and for serious applications, you need to increase the size of the calibration data set until the error goes.     
-    #    -directmap Use direct mapping between the eigenvalues and the distribution parameters instead of the log of the eigenvalues
-    calib_info_file = File(exists=True, argstr='-infofile %s', mandatory=True, position=2,
-        desc='The Info file that corresponds to the calibration datafile used in the reconstruction')
-    outputfilestem = traits.String(argstr = '-outputfilestem %s', mandatory=True, desc="This option allows you to define the name of the generated luts. The form of the filenames will be [stem]_oneFibreLUT.Bdouble and [stem]_twoFibreLUT.Bdouble name of new track file to be made")
-    pdf = traits.Enum('bingham', 'watson', argstr='-pdf %s',usedefault=True,
-                      desc="Sets the distribution to use for the calibration - either Bingham (the default, \
-                      which allows elliptical probability density contours), or Watson (rotationally symmetric).")
-        
-class SfLUTGenOutputSpec(TraitedSpec):
-    
-    # if pdf is bingham, output is two files; if watson, it is one file
-    oneFibreLUT = File(desc='Sf_LUT_oneline')    
-    twoFibreLUT = File(desc='Sf_LUT_twoline')
-
-class SfLUTGen(StdOutCommandLine):
-    """
-    add docu here
-    """
-    
-    _cmd = 'sflutgen'
-    input_spec=SfLUTGenInputSpec
-    output_spec=SfLUTGenOutputSpec
-
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        for k in outputs.keys():
-            outputs[k] = self._gen_outfilefname(k)
-        return outputs
-
-    def _gen_outfilename(self,suffix):
-        return self.inputs.outfilestem+'_'+suffix+'.Bdouble'
-
-
-
-class MESDInputSpec(StdOutCommandLineInputSpec):
-    """The basic options are similar to modelfit. See modelfit(1) for examples of running simulations, which can be run with mesd in a similar way."""
-    """The inversion index specifies the type of inversion to perform on the data... """
-    mesd_filter = traits.List(argstr= '-filter %s', minlen=2, maxlen=2,desc = "two-component list specifying a) filter name,and b) filter parameter. Options are:"\
-    "Filter name             Filter parameters"\
-    "SPIKE                   bd (Product of the b-value and the"\
-    "            diffusivity along the fibre.)"\
-    "PAS                             r")\
-
-    fastmesd =traits.Bool(argstr='-fastmesd', desc="Turns off numerical integration checks and fixes the integration point set size at that of the index specified by -basepointset.")
-    
-    basepointset=traits.Int(argstr=' -basepointset %s',desc='Specifies the index of the smallest point set to use for numerical integration. If -fastmesd is specified, this is the only point set used; otherwise, this is the first point set tested and the algorithm automatically determines whether to increase the point set size individually in each voxel.')
-
-    in_file = File(exists=True, argstr='-inputfile %s', mandatory=True,position=1, desc='voxel-order data filename')
-
-    inputdatatype = traits.Enum('float', 'char', 'short', 'int', 'long', 'double', argstr='-inputdatatype %s',desc='Specifies the data type of the input file: "char", "short", "int", "long", "float" or "double". The input file must have BIG-ENDIAN ordering. By default, the input type is "float".')
-
-    outputfile = File(argstr='-outputfile %s', desc='Filename of the output file.')
-
-    out_type = traits.Enum("float", "char", "short", "int", "long", "double", argstr='-outputdatatype %s',usedefault=True,desc='"i.e. Bfloat". Can be "char", "short", "int", "long", "float" or "double"')
-
-    bgthresh = traits.Float(argstr='-bgthresh %s', desc='Sets a threshold on the average q=0 measurement to separate foreground and background. The program does not process background voxels, but outputs the same number of values in background voxels and foreground voxels. Each value is zero in background voxels apart from the exit code which is -1.')
-
-    csfthresh = traits.Float(argstr='-csfthresh %s', desc='Sets a threshold on the average q=0 measurement to determine which voxels are CSF. This program does not treat CSF voxels any different to other voxels.')
-
-    scheme_file = File(exists=True, argstr='-schemefile %s', mandatory=True,
-        desc='Camino scheme file (b values / vectors, see camino.fsl2scheme)')
-
-    #bmx = 
-
-
-    fixedmodq = traits.List(traits.Float, argstr='-fixedmod %s', minlen=4, maxlen=4, desc='Specifies <M> <N> <Q> <tau> a spherical acquisition scheme with M measurements with q=0 and N measurements with |q|=Q and diffusion time tau. The N measurements with |q|=Q have unique directions. The program reads in the directions from the files in directory PointSets.')
-
-    tau = traits.Float(argstr='-tau %s', desc='Sets the diffusion time separately. This overrides the diffusion time specified in a scheme file or by a scheme index for both the acquisition scheme and in the data synthesis.')
-    
-    """
-    testfunc=
-
-    lambda1 = 
-
-    scale=
-
-    dt2rotangle = 
-
-    dt2mix = 
-
-    gaussmix =
-
-    rotation =
-
-    voxels = 
-    """
-
-    snr = traits.Int(argstr='-snr %s',desc="SNR - see 'datasynth' for more info")
-
-    seed =traits.Int(argstr='-snr %s',desc="Specifies the random seed to use for noise generation in simulation trials.")
-
-    bootstrap = traits.Int(argstr='-bootstrap %s',desc="Tells the program to simulate a bootstrapping experiment with R repeats rather than using independent noise in every trial.")
-
-    inputmodel = traits.Enum('dt', 'twotensor', 'threetensor','multitensor', 'ballstick',argstr='-inputmodel %s', desc='input model type')
-
-    mepointset=traits.Int(argstr=' -mepointset %s',desc='Use a set of directions other than those in the scheme file for the deconvolution kernel. The number refers to the number of directions on the unit sphere. For example, "-mepointset 54" uses the directions in "camino/PointSets/Elec054.txt". Use this option only if you told mesd to use a custom set of directions with the same option. Otherwise, specify the scheme file with -schemefile. Index of the point set camino/PointSets/Elec???.txt')
-
-class MESDOutputSpec(TraitedSpec):
-    MESD_file = File(exists=True, desc='MESD_file')
-    
-class MESD(StdOutCommandLine):
-    """
-    Description
-    """
-    _cmd = 'mesd'
-    input_spec=MESDInputSpec
-    output_spec=MESDOutputSpec
-    
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        if not isdefined(self.inputs.out_file):
-            outputs['MESD_file'] = os.path.abspath(self._gen_outfilename())
-        else:
-            outputs['MESD_file'] = self.inputs.out_file
-        return outputs
-        
-    def _gen_outfilename(self):
-        _, name , _ = split_filename(self.inputs.in_file)
-        return name + '.B'+ self.inputs.out_type 
-
-#    def _run_interface(self, runtime):
-#        if not isdefined(self.inputs.out_file):
-#            self.inputs.out_file = os.path.abspath(self._gen_outfilename())
-#        runtime = super(MESD, self)._run_interface(runtime)
-#        if runtime.stderr:
-#            self.raise_exception(runtime)
-#        return runtime
-
+        datatype= self.inputs.outputdatatype
+        return name + '_eig.B' + datatype
