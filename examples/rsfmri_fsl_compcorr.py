@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """
@@ -63,6 +64,7 @@ datasource.inputs.template = '%s/%s.nii'
 info = dict(func=[['subject_id', ['f3',]]])
 
 datasource.inputs.template_args = info
+datasource.inputs.sort_filelist = True
 
 """
 Store significant result-files in a special directory

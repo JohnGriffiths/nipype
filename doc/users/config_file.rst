@@ -6,9 +6,9 @@
 
 Some of the system wide options of Nipype can be configured using a
 configuration file. Nipype looks for the file in the local folder under the name
-``nipype.cfg`` and in ``~/.nipype.cfg`` (in this order). If an option will not
-be specified a default value will be assumed. The file is divided into following
-sections:
+``nipype.cfg`` and in ``~/.nipype/nipype.cfg`` (in this order). If an option
+will not be specified a default value will be assumed. The file is divided into
+following sections:
 
 Logging
 ~~~~~~~
@@ -25,7 +25,7 @@ Logging
 	values: ``INFO`` and ``DEBUG``; default value: ``INFO``)
 *log_to_file*
     Indicates whether logging should also send the output to a file (possible
-    values: ``true`` and ``false``; default value: ``true``)
+    values: ``true`` and ``false``; default value: ``false``)
 *log_directory*
 	Where to store logs. (string, default value: home directory)
 *log_size*
@@ -80,7 +80,9 @@ Execution
 *remove_unnecessary_outputs*
 	This will remove any interface outputs not needed by the workflow. If the
 	required outputs from a node changes, rerunning the workflow will rerun the
-	node. (possible values: ``true`` and ``false``; default value: ``true``)
+	node. Outputs of leaf nodes (nodes whose outputs are not connected to any 
+	other nodes) will never be deleted independent of this parameter. (possible 
+	values: ``true`` and ``false``; default value: ``true``)
 
 *use_relative_paths*
 	Should the paths stored in results (and used to look for inputs)
@@ -93,7 +95,7 @@ Execution
     Perform the hash check on the job submission machine. This option minimizes
     the number of jobs submitted to a cluster engine or a multiprocessing pool
     to only those that need to be rerun. (possible values: ``true`` and
-    ``false``; default value: ``false``)
+    ``false``; default value: ``true``)
 
 *job_finished_timeout*
     When batch jobs are submitted through, SGE/PBS/Condor they could be killed
@@ -106,6 +108,17 @@ Execution
 	up. Doesn't work with IdentiInterface or any node that patches
 	data through (without copying) (possible values: ``true`` and
 	``false``; default value: ``false``)
+
+*stop_on_unknown_version*
+    If this is set to True, an underlying interface will raise an error, when no
+    version information is available. Please notify developers or submit a
+    patch.
+
+*parameterize_dirs*
+    If this is set to True, the node's output directory will contain full
+    parameterization of any iterable, otherwise parameterizations over 32
+    characters will be replaced by their hash. (possible values: ``true`` and
+	``false``; default value: ``true``)
 
 Example
 ~~~~~~~
@@ -120,9 +133,8 @@ Example
 	hash_method = timestamp
 	display_variable = :1
 
-Additionally you can set some config options by setting the workflow.config. This, however, currently does not work for options related to logging levels. Those will be always read from .cfg files.
-
-Workflow.config property has a form of a nested dictionary reflecting the structure of the .cfg file.
+Workflow.config property has a form of a nested dictionary reflecting the
+structure of the .cfg file.
 
 ::
   
@@ -130,33 +142,43 @@ Workflow.config property has a form of a nested dictionary reflecting the struct
   myworkflow.config['execution'] = {'stop_on_first_rerun': 'True', 
                                      'hash_method': 'timestamp'}
 
-You can also directly set config options in your workflow script. An
+You can also directly set global config options in your workflow script. An
 example is shown below. This needs to be called before you import the
 pipeline or the logger. Otherwise logging level will not be reset.
 
 ::
 
-  from nipype.utils.config import config
-  from StringIO import StringIO
-  cfg = StringIO("""
-  [logging]
-        workflow_level = DEBUG
+  from nipype import config
+  cfg = dict(logging=dict(workflow_level = 'DEBUG'),
+             execution={'stop_on_first_crash': False,
+                        'hash_method': 'content'})
+  config.update_config(cfg)
 
-  [execution]
-  stop_on_first_crash = false
-  hash_method = content
-  """)
-  
-  config.readfp(cfg)
+Enabling logging to file
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, logging to file is disabled. One can enable and write the file to
+a location of choice as in the example below.
+
+::
+
+    import os
+    from nipype import config, logging
+    config.update_config({'logging': {'log_directory': os.getcwd(),
+                                      'log_to_file': True}})
+    logging.update_logging(config)
+
+The logging update line is necessary to change the behavior of logging such as
+output directory, logging level, etc.,.
 
 Debug configuration
 ~~~~~~~~~~~~~~~~~~~
 
-To enable debug mode, one can insert the following lines at the beginning of any
-script.::
+To enable debug mode, one can insert the following lines::
 
-  from nipype.utils.config import config
+  from nipype import config, logging
   config.enable_debug_mode()
+  logging.update_logging(config)
 
 In this mode the following variables are set::
 

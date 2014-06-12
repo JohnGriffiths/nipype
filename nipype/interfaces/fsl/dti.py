@@ -46,7 +46,7 @@ class DTIFitInputSpec(FSLCommandInputSpec):
     save_tensor = traits.Bool(desc='save the elements of the tensor',
                         argstr='--save_tensor')
     sse = traits.Bool(desc='output sum of squared errors', argstr='--sse')
-    cni = File(exists=True, desc='input counfound regressors', argstr='-cni %s')
+    cni = File(exists=True, desc='input counfound regressors', argstr='--cni=%s')
     little_bit = traits.Bool(desc='only process small area of brain',
                              argstr='--littlebit')
 
@@ -100,58 +100,6 @@ class DTIFit(FSLCommand):
         return outputs
 
 
-class EddyCorrectInputSpec(FSLCommandInputSpec):
-    in_file = File(exists=True, desc='4D input file', argstr='%s', position=0, mandatory=True)
-    out_file = File(desc='4D output file', argstr='%s', position=1, genfile=True)
-    ref_num = traits.Int(argstr='%d', position=2, desc='reference number', mandatory=True)
-
-
-class EddyCorrectOutputSpec(TraitedSpec):
-    eddy_corrected = File(exists=True, desc='path/name of 4D eddy corrected output file')
-
-
-class EddyCorrect(FSLCommand):
-    """  Deprecated! Please use create_eddy_correct_pipeline instead
-
-    Example
-    -------
-
-    >>> from nipype.interfaces import fsl
-    >>> eddyc = fsl.EddyCorrect(in_file='diffusion.nii', out_file="diffusion_edc.nii", ref_num=0)
-    >>> eddyc.cmdline
-    'eddy_correct diffusion.nii diffusion_edc.nii 0'
-
-    """
-    _cmd = 'eddy_correct'
-    input_spec = EddyCorrectInputSpec
-    output_spec = EddyCorrectOutputSpec
-
-    def __init__(self, **inputs):
-        warnings.warn("Deprecated: Please use create_eddy_correct_pipeline instead", DeprecationWarning)
-        return super(EddyCorrect, self).__init__(**inputs)
-
-    def _run_interface(self, runtime):
-        if not isdefined(self.inputs.out_file):
-            self.inputs.out_file = self._gen_fname(self.inputs.in_file, suffix='_edc')
-        runtime = super(EddyCorrect, self)._run_interface(runtime)
-        if runtime.stderr:
-            self.raise_exception(runtime)
-        return runtime
-
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        outputs['eddy_corrected'] = self.inputs.out_file
-        if not isdefined(outputs['eddy_corrected']):
-            outputs['eddy_corrected'] = self._gen_fname(self.inputs.in_file, suffix='_edc')
-        return outputs
-
-    def _gen_filename(self, name):
-        if name is 'out_file':
-            return self._list_outputs()['eddy_corrected']
-        else:
-            return None
-
-
 class BEDPOSTXInputSpec(FSLCommandInputSpec):
     dwi = File(exists=True, desc='diffusion weighted image data file', mandatory=True)
     mask = File(exists=True, desc='bet binary mask file', mandatory=True)
@@ -170,30 +118,30 @@ class BEDPOSTXInputSpec(FSLCommandInputSpec):
 
 
 class BEDPOSTXOutputSpec(TraitedSpec):
-    bpx_out_directory = Directory(exists=True, field='dir',
+    bpx_out_directory = Directory(exists=True,
                                   desc='path/name of directory with all ' +
                                        'bedpostx output files for this subject')
-    xfms_directory = Directory(exists=True, field='dir',
+    xfms_directory = Directory(exists=True,
                               desc='path/name of directory with the ' +
                                    'tranformation matrices')
-    merged_thsamples = traits.List(File, exists=True,
+    merged_thsamples = traits.List(File(exists=True),
                                    desc='a list of path/name of 4D volume ' +
                                         'with samples from the distribution ' +
                                         'on theta')
-    merged_phsamples = traits.List(File, exists=True,
+    merged_phsamples = traits.List(File(exists=True),
                                    desc='a list of path/name of file with '
                                         'samples from the distribution on phi')
-    merged_fsamples = traits.List(File, exists=True,
+    merged_fsamples = traits.List(File(exists=True),
                                    desc='a list of path/name of 4D volume ' +
                                         'with samples from the distribution ' +
                                         'on anisotropic volume fraction')
-    mean_thsamples = traits.List(File, exists=True,
+    mean_thsamples = traits.List(File(exists=True),
                                  desc='a list of path/name of 3D volume with mean of distribution on theta')
-    mean_phsamples = traits.List(File, exists=True,
+    mean_phsamples = traits.List(File(exists=True),
                                  desc='a list of path/name of 3D volume with mean of distribution on phi')
-    mean_fsamples = traits.List(File, exists=True,
+    mean_fsamples = traits.List(File(exists=True),
                                  desc='a list of path/name of 3D volume with mean of distribution on f anisotropy')
-    dyads = traits.List(File, exists=True,  desc='a list of path/name of mean of PDD distribution in vector form')
+    dyads = traits.List(File(exists=True),  desc='a list of path/name of mean of PDD distribution in vector form')
 
 
 class BEDPOSTX(FSLCommand):
@@ -344,7 +292,7 @@ class ProbTrackXInputSpec(FSLCommandInputSpec):
     loop_check = traits.Bool(argstr='--loopcheck', desc='perform loop_checks on paths -' +
                             ' slower, but allows lower curvature threshold')
     use_anisotropy = traits.Bool(argstr='--usef', desc='use anisotropy to constrain tracking')
-    rand_fib = traits.Enum(0, 1, 2, 3, argstr='--randfib %d',
+    rand_fib = traits.Enum(0, 1, 2, 3, argstr='--randfib=%d',
                            desc='options: 0 - default, 1 - to randomly sample' +
                             ' initial fibres (with f > fibthresh), 2 - to sample in ' +
                             'proportion fibres (with f>fibthresh) to f, 3 - to sample ALL ' +
@@ -367,8 +315,8 @@ class ProbTrackXOutputSpec(TraitedSpec):
     way_total = File(exists=True, desc='path/name of a text file containing a single number ' +
                     'corresponding to the total number of generated tracts that ' +
                     'have not been rejected by inclusion/exclusion mask criteria')
-    targets = traits.List(File, exists=True, desc='a list with all generated seeds_to_target files')
-    particle_files = traits.List(File, exists=True, desc='Files describing ' +
+    targets = traits.List(File(exists=True), desc='a list with all generated seeds_to_target files')
+    particle_files = traits.List(File(exists=True), desc='Files describing ' +
                                  'all of the tract samples. Generated only if ' +
                                  'verbose is set to 2')
 
@@ -492,7 +440,7 @@ class VecRegInputSpec(FSLCommandInputSpec):
     in_file = File(exists=True, argstr='-i %s', desc='filename for input vector or tensor field',
                   mandatory=True)
     out_file = File(argstr='-o %s', desc='filename for output registered vector or tensor field',
-                   genfile=True)
+                   genfile=True, hash_files=False)
     ref_vol = File(exists=True, argstr='-r %s', desc='filename for reference (target) volume',
                   mandatory=True)
     affine_mat = File(exists=True, argstr='-t %s',
@@ -554,6 +502,7 @@ class VecReg(FSLCommand):
             pth, base_name = os.path.split(self.inputs.in_file)
             outputs['out_file'] = self._gen_fname(base_name, cwd=os.path.abspath(pth),
                                                  suffix='_vreg')
+        outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
     def _gen_filename(self, name):
@@ -564,7 +513,7 @@ class VecReg(FSLCommand):
 
 
 class ProjThreshInputSpec(FSLCommandInputSpec):
-    in_files = traits.List(File, exists=True, argstr='%s',
+    in_files = traits.List(File(exists=True), argstr='%s',
                            desc='a list of input volumes',
                            mandatory=True, position=0)
     threshold = traits.Int(argstr='%d', desc='threshold indicating minimum ' +
@@ -573,7 +522,7 @@ class ProjThreshInputSpec(FSLCommandInputSpec):
 
 
 class ProjThreshOuputSpec(TraitedSpec):
-    out_files = traits.List(File, exists=True, desc='path/name of output volume after thresholding')
+    out_files = traits.List(File(exists=True), desc='path/name of output volume after thresholding')
 
 
 class ProjThresh(FSLCommand):
@@ -608,9 +557,11 @@ class ProjThresh(FSLCommand):
 
 
 class FindTheBiggestInputSpec(FSLCommandInputSpec):
-    in_files = traits.List(File, exists=True, argstr='%s', desc='a list of input volumes or a singleMatrixFile',
+    in_files = traits.List(File(exists=True), argstr='%s',
+                           desc='a list of input volumes or a singleMatrixFile',
                           position=0, mandatory=True)
-    out_file = File(argstr='%s', desc='file with the resulting segmentation', position=2, genfile=True)
+    out_file = File(argstr='%s', desc='file with the resulting segmentation',
+                    position=2, genfile=True, hash_files=False)
 
 
 class FindTheBiggestOutputSpec(TraitedSpec):
@@ -648,6 +599,7 @@ class FindTheBiggest(FSLCommand):
         outputs['out_file'] = self.inputs.out_file
         if not isdefined(outputs['out_file']):
             outputs['out_file'] = self._gen_fname('biggestSegmentation', suffix='')
+        outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
     def _gen_filename(self, name):
@@ -762,8 +714,8 @@ class DistanceMapInputSpec(FSLCommandInputSpec):
                      desc="binary mask to contrain calculations")
     invert_input = traits.Bool(argstr="--invert", desc="invert input image")
     local_max_file = traits.Either(traits.Bool, File, argstr="--localmax=%s",
-                                   desc="write an image of the local maxima")
-    distance_map = File(genfile=True, argstr="--out=%s", desc="distance map to write")
+                                   desc="write an image of the local maxima", hash_files=False)
+    distance_map = File(genfile=True, argstr="--out=%s", desc="distance map to write", hash_files=False)
 
 
 class DistanceMapOutputSpec(TraitedSpec):
@@ -804,6 +756,7 @@ class DistanceMap(FSLCommand):
                                                       suffix="_dstmap",
                                                       use_ext=True,
                                                       newpath=os.getcwd())
+        outputs["distance_map"] = os.path.abspath(outputs["distance_map"])
         if isdefined(_si.local_max_file):
             outputs["local_max_file"] = _si.local_max_file
             if isinstance(_si.local_max_file, bool):
@@ -811,6 +764,7 @@ class DistanceMap(FSLCommand):
                                                            suffix="_lclmax",
                                                            use_ext=True,
                                                            newpath=os.getcwd())
+            outputs["local_max_file"] = os.path.abspath(outputs["local_max_file"])
         return outputs
 
     def _gen_filename(self, name):
@@ -822,6 +776,7 @@ class DistanceMap(FSLCommand):
 class XFibresInputSpec(FSLCommandInputSpec):
     dwi = File(exists=True, argstr="--data=%s", mandatory=True)
     mask = File(exists=True, argstr="--mask=%s", mandatory=True)
+    gradnonlin = File(exists=True, argstr="--gradnonlin=%s")
     bvecs = File(exists=True, argstr="--bvecs=%s", mandatory=True)
     bvals = File(exists=True, argstr="--bvals=%s", mandatory=True)
     logdir = Directory("logdir", argstr="--logdir=%s", usedefault=True)
@@ -905,7 +860,7 @@ class MakeDyadicVectorsInputSpec(FSLCommandInputSpec):
     theta_vol = File(exists=True, mandatory=True, position=0, argstr="%s")
     phi_vol = File(exists=True, mandatory=True, position=1, argstr="%s")
     mask = File(exists=True, position=2, argstr="%s")
-    output = File("dyads", position=3, usedefault=True, argstr="%s")
+    output = File("dyads", position=3, usedefault=True, argstr="%s", hash_files=False)
     perc = traits.Float(desc="the {perc}% angle of the output cone of \
 uncertainty (output will be in degrees)",
                         position=4,

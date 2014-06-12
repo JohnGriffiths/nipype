@@ -11,12 +11,17 @@ from .preprocess import (FAST, FLIRT, ApplyXfm, BET, MCFLIRT, FNIRT, ApplyWarp,
                          SliceTimer, SUSAN, PRELUDE, FUGUE, FIRST)
 from .model import (Level1Design, FEAT, FEATModel, FILMGLS, FEATRegister,
                     FLAMEO, ContrastMgr, MultipleRegressDesign, L2Model, SMM,
-                    MELODIC, SmoothEstimate, Cluster, Randomise)
+                    MELODIC, SmoothEstimate, Cluster, Randomise, GLM)
 from .utils import (Smooth, Merge, ExtractROI, Split, ImageMaths, ImageMeants,
                     ImageStats, FilterRegressor, Overlay, Slicer,
                     PlotTimeSeries, PlotMotionParams, ConvertXFM,
-                    SwapDimensions, PowerSpectrum)
-from .dti import (EddyCorrect, BEDPOSTX, DTIFit, ProbTrackX, VecReg, ProjThresh,
+                    SwapDimensions, PowerSpectrum, Reorient2Std,
+                    Complex, InvWarp)
+
+from .epi import (PrepareFieldmap, TOPUP, ApplyTOPUP, Eddy, EPIDeWarp,
+                  SigLoss, EddyCorrect)
+
+from .dti import (BEDPOSTX, DTIFit, ProbTrackX, VecReg, ProjThresh,
                   FindTheBiggest, DistanceMap, TractSkeleton, XFibres,
                   MakeDyadicVectors)
 from .maths import (ChangeDataType, Threshold, MeanImage, ApplyMask,

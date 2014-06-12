@@ -29,9 +29,8 @@ from nipype.interfaces.base import (BaseInterface, TraitedSpec, InputMultiPath,
                                     traits, File, Bunch, BaseInterfaceInputSpec,
                                     isdefined)
 from nipype.utils.filemanip import filename_to_list
-from nipype.utils.logger import iflogger
-from nipype.utils.config import config
-
+from .. import config, logging
+iflogger = logging.getLogger('interface')
 
 def gcd(a, b):
     """Returns the greatest common divisor of two integers
@@ -174,16 +173,16 @@ class SpecifyModelInputSpec(BaseInterfaceInputSpec):
                 'corresponding to onsets, durations and amplitudes'))
     realignment_parameters = InputMultiPath(File(exists=True),
        desc = "Realignment parameters returned by motion correction algorithm",
-                                         filecopy=False)
+                                         copyfile=False)
     outlier_files = InputMultiPath(File(exists=True),
          desc="Files containing scan outlier indices that should be tossed",
-                                filecopy=False)
+                                copyfile=False)
     functional_runs = InputMultiPath(traits.Either(traits.List(File(exists=True)),
                                                    File(exists=True)),
                                      mandatory=True,
             desc="Data files for model. List of 4D files or list of" \
                                       "list of 3D files per session",
-            filecopy=False)
+            copyfile=False)
     input_units = traits.Enum('secs', 'scans', mandatory=True,
              desc = "Units of event onsets and durations (secs or scans)" \
                     "Output units are always in secs")
@@ -272,21 +271,24 @@ class SpecifyModel(BaseInterface):
             each run
         """
         sessinfo = []
+        output_units = 'secs'
+        if 'output_units' in self.inputs.traits():
+            output_units = self.inputs.output_units
         for i, info in enumerate(infolist):
             sessinfo.insert(i, dict(cond=[]))
             if isdefined(self.inputs.high_pass_filter_cutoff):
                 sessinfo[i]['hpf'] = np.float(self.inputs.high_pass_filter_cutoff)
-            if hasattr(info, 'conditions') and info.conditions:
+            if hasattr(info, 'conditions') and info.conditions is not None:
                 for cid, cond in enumerate(info.conditions):
                     sessinfo[i]['cond'].insert(cid, dict())
                     sessinfo[i]['cond'][cid]['name']  = info.conditions[cid]
                     sessinfo[i]['cond'][cid]['onset'] = scale_timings(info.onsets[cid],
                                                                      self.inputs.input_units,
-                                                                     'secs',
+                                                                     output_units,
                                                                      self.inputs.time_repetition)
                     sessinfo[i]['cond'][cid]['duration'] = scale_timings(info.durations[cid],
                                                                         self.inputs.input_units,
-                                                                        'secs',
+                                                                        output_units,
                                                                         self.inputs.time_repetition)
                     if hasattr(info, 'amplitudes') and info.amplitudes:
                         sessinfo[i]['cond'][cid]['amplitudes']  = info.amplitudes[cid]
@@ -322,7 +324,12 @@ class SpecifyModel(BaseInterface):
             for i, out in enumerate(outliers):
                 numscans = 0
                 for f in filename_to_list(sessinfo[i]['scans']):
-                    numscans += load(f).get_shape()[3]
+                    shape = load(f).get_shape()
+                    if len(shape) == 3 or shape[3] == 1:
+                        iflogger.warning("You are using 3D instead of 4D files. Are you sure this was intended?")
+                        numscans += 1
+                    else:
+                        numscans += shape[3]
                 for j, scanno in enumerate(out):
                     colidx = len(sessinfo[i]['regress'])
                     sessinfo[i]['regress'].insert(colidx, dict(name='', val=[]))
@@ -458,7 +465,7 @@ class SpecifySPMModel(SpecifyModel):
         return [infoout], nscans
 
     def _generate_design(self, infolist=None):
-        if not isdefined(self.inputs.concatenate_runs):
+        if not isdefined(self.inputs.concatenate_runs) or not self.inputs.concatenate_runs:
             super(SpecifySPMModel, self)._generate_design(infolist=infolist)
             return
         if isdefined(self.inputs.subject_info):
@@ -736,32 +743,3 @@ class SpecifySparseModel(SpecifyModel):
             outputs['sparse_png_file'] = os.path.join(os.getcwd(), 'sparse.png')
             outputs['sparse_svg_file'] = os.path.join(os.getcwd(), 'sparse.svg')
         return outputs
-
-'''
-
-Need to figure out how this component will work!!! multiple inheritence is causing a big headache
-
-class SpecifySparseSPMModelInputSpec(SpecifySPMModelInputSpec, SpecifySparseModelInputSpec):
-    pass
-
-class SpecifySparseSPMModel(SpecifySparseModel, SpecifySPMModel):
-    """Combines SPM specific options with sparse options
-    """
-    input_spec = SpecifySparseSPMModelInputSpec
-    output_spec = SpecifySparseModelOutputSpec
-
-    def _generate_design(self, infolist=None):
-        raise Exception('not working yet')
-        if (self.inputs.input_units == 'scans') and (self.inputs.output_units == 'secs'):
-            if isdefined(self.inputs.volumes_in_cluster) and (self.inputs.volumes_in_cluster > 1):
-                raise NotImplementedError("Cannot scale timings if times are scans and acquisition is clustered")
-        if isdefined(self.inputs.subject_info):
-            infolist = self.inputs.subject_info
-        else:
-            infolist = gen_info(self.inputs.event_files)
-        clusterlist = self._generate_clustered_design(infolist)
-        if not isdefined(self.inputs.concatenate_runs):
-            super(SpecifySparseSPMModel, self)._generate_design(infolist=clusterlist)
-        else:
-            self._generate_spm_design(infolist=clusterlist)
-'''

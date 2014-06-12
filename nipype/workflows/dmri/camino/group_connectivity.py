@@ -62,6 +62,7 @@ def create_group_connectivity_pipeline(group_list, group_id, data_dir, subjects_
     datasource.inputs.base_directory = data_dir
     datasource.inputs.field_template = dict(dwi='%s/%s.nii')
     datasource.inputs.template_args = info
+    datasource.inputs.sort_filelist = True
 
     """
     Create a connectivity mapping workflow
@@ -74,7 +75,7 @@ def create_group_connectivity_pipeline(group_list, group_id, data_dir, subjects_
     datasink.inputs.base_directory = output_dir
     datasink.inputs.container = group_id
 
-    l1pipeline = pe.Workflow(name="l1pipeline")
+    l1pipeline = pe.Workflow(name="l1pipeline_"+group_id)
     l1pipeline.base_dir = output_dir
     l1pipeline.base_output_dir = group_id
     l1pipeline.connect([(subj_infosource, datasource,[('subject_id', 'subject_id')])])
@@ -90,7 +91,7 @@ def create_group_connectivity_pipeline(group_list, group_id, data_dir, subjects_
                                               ("outputnode.cmatrix", "@l1output.cmatrix"),
                                               ("outputnode.rois", "@l1output.rois"),
                                               ("outputnode.struct", "@l1output.struct"),
-                                              ("outputnode.gpickled_network", "@l1output.gpickled_network"),
+                                              ("outputnode.networks", "@l1output.networks"),
                                               ("outputnode.mean_fiber_length", "@l1output.mean_fiber_length"),
                                               ("outputnode.fiber_length_std", "@l1output.fiber_length_std"),
                                               ])])

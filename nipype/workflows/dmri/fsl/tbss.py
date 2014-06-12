@@ -2,6 +2,8 @@
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 
 import os
+from warnings import warn
+
 import nipype.pipeline.engine as pe
 import nipype.interfaces.utility as util
 import nipype.interfaces.fsl as fsl
@@ -24,7 +26,7 @@ def create_tbss_1_preproc(name='tbss_1_preproc'):
     A pipeline that does the same as tbss_1_preproc script in FSL
 
     Example
-    --------
+    -------
 
     >>> from nipype.workflows.dmri.fsl import tbss
     >>> tbss1 = tbss.create_tbss_1_preproc()
@@ -95,11 +97,11 @@ def create_tbss_2_reg(name="tbss_2_reg"):
     is not supported at the moment.
 
     Example
-    ------
+    -------
 
     >>> from nipype.workflows.dmri.fsl import tbss
     >>> tbss2 = create_tbss_2_reg(name="tbss2")
-    >>> tbss2.inputs.inputnode.target = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
+    >>> tbss2.inputs.inputnode.target = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")  # doctest: +SKIP
     >>> tbss2.inputs.inputnode.fa_list = ['s1_FA.nii', 's2_FA.nii', 's3_FA.nii']
     >>> tbss2.inputs.inputnode.mask_list = ['s1_mask.nii', 's2_mask.nii', 's3_mask.nii']
 
@@ -126,13 +128,16 @@ def create_tbss_2_reg(name="tbss_2_reg"):
                     iterfield=['in_file', 'in_weight'],
                     name="flirt")
 
+    fnirt = pe.MapNode(interface=fsl.FNIRT(fieldcoeff_file=True),
+                       iterfield=['in_file', 'inmask_file', 'affine_file'],
+                       name="fnirt")
     # Fnirt the FA image to the target
-    config_file = os.path.join(os.environ["FSLDIR"],
-                                "etc/flirtsch/FA_2_FMRIB58_1mm.cnf")
-    fnirt = pe.MapNode(interface=fsl.FNIRT(config_file=config_file,
-                                        fieldcoeff_file=True),
-                    iterfield=['in_file', 'inmask_file', 'affine_file'],
-                    name="fnirt")
+    if fsl.no_fsl():
+        warn('NO FSL found')
+    else:
+        config_file = os.path.join(os.environ["FSLDIR"],
+                                    "etc/flirtsch/FA_2_FMRIB58_1mm.cnf")
+        fnirt.inputs.config_file=config_file
 
     # Define the registration workflow
     tbss2 = pe.Workflow(name=name)
@@ -166,7 +171,7 @@ def create_tbss_3_postreg(name='tbss_3_postreg', estimate_skeleton=True):
     skeleton (same as 'tbss_3_postreg -T').
 
     Example
-    --------
+    -------
 
     >>> from nipype.workflows.dmri.fsl import tbss
     >>> tbss3 = tbss.create_tbss_3_postreg()
@@ -195,7 +200,10 @@ def create_tbss_3_postreg(name='tbss_3_postreg', estimate_skeleton=True):
     applywarp = pe.MapNode(interface=fsl.ApplyWarp(),
                            iterfield=['in_file', 'field_file'],
                         name="applywarp")
-    applywarp.inputs.ref_file = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
+    if fsl.no_fsl():
+        warn('NO FSL found')
+    else:
+        applywarp.inputs.ref_file = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
 
     # Merge the FA files into a 4D file
     mergefa = pe.Node(fsl.Merge(dimension="t"),
@@ -288,7 +296,7 @@ def create_tbss_4_prestats(name='tbss_4_prestats'):
     A pipeline that does the same as tbss_4_prestats script from FSL
 
     Example
-    --------
+    -------
 
     >>> from nipype.workflows.dmri.fsl import tbss
     >>> tbss4 = tbss.create_tbss_4_prestats(name='tbss4')
@@ -375,7 +383,7 @@ def create_tbss_all(name='tbss_all', estimate_skeleton=True):
     """Create a pipeline that combines create_tbss_* pipelines
 
     Example
-    --------
+    -------
 
     >>> from nipype.workflows.dmri.fsl import tbss
     >>> tbss = tbss.create_tbss_all('tbss')
@@ -402,7 +410,10 @@ def create_tbss_all(name='tbss_all', estimate_skeleton=True):
 
     tbss1 = create_tbss_1_preproc(name='tbss1')
     tbss2 = create_tbss_2_reg(name='tbss2')
-    tbss2.inputs.inputnode.target = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
+    if fsl.no_fsl():
+        warn('NO FSL found')
+    else:
+        tbss2.inputs.inputnode.target = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
     tbss3 = create_tbss_3_postreg(name='tbss3', estimate_skeleton=estimate_skeleton)
     tbss4 = create_tbss_4_prestats(name='tbss4')
 
@@ -480,10 +491,10 @@ def create_tbss_all(name='tbss_all', estimate_skeleton=True):
 
 def create_tbss_non_FA(name='tbss_non_FA'):
     """
-    A pipeline that implemet tbss_non_FA in FSL
+    A pipeline that implement tbss_non_FA in FSL
 
     Example
-    --------
+    -------
 
     >>> from nipype.workflows.dmri.fsl import tbss
     >>> tbss_MD = tbss.create_tbss_non_FA()
@@ -504,7 +515,7 @@ def create_tbss_non_FA(name='tbss_non_FA'):
         inputnode.distance_map
 
     Outputs::
-    
+
         outputnode.projected_nonFA_file
 
     """
@@ -522,7 +533,10 @@ def create_tbss_non_FA(name='tbss_non_FA'):
     applywarp = pe.MapNode(interface=fsl.ApplyWarp(),
                            iterfield=['in_file', 'field_file'],
                            name="applywarp")
-    applywarp.inputs.ref_file = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
+    if fsl.no_fsl():
+        warn('NO FSL found')
+    else:
+        applywarp.inputs.ref_file = fsl.Info.standard_image("FMRIB58_FA_1mm.nii.gz")
     # Merge the non FA files into a 4D file
     merge = pe.Node(fsl.Merge(dimension="t"), name="merge")
     #merged_file="all_FA.nii.gz"

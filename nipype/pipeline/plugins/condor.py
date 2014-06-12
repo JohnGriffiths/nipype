@@ -45,7 +45,8 @@ class CondorPlugin(SGELikeBatchManagerBase):
         super(CondorPlugin, self).__init__(template, **kwargs)
 
     def _is_pending(self, taskid):
-        cmd = CommandLine('condor_q')
+        cmd = CommandLine('condor_q',
+                          terminal_output='allatonce')
         cmd.inputs.args = '%d' % taskid
         # check condor cluster
         oldlevel = iflogger.level
@@ -57,9 +58,18 @@ class CondorPlugin(SGELikeBatchManagerBase):
         return False
 
     def _submit_batchtask(self, scriptfile, node):
-        cmd = CommandLine('condor_qsub', environ=os.environ.data)
+        cmd = CommandLine('condor_qsub', environ=os.environ.data,
+                          terminal_output='allatonce')
         path = os.path.dirname(scriptfile)
         qsubargs = ''
+        if self._qsub_args:
+            qsubargs = self._qsub_args
+        if 'qsub_args' in node.plugin_args:
+            if 'overwrite' in node.plugin_args and\
+               node.plugin_args['overwrite']:
+                qsubargs = node.plugin_args['qsub_args']
+            else:
+                qsubargs += (" " + node.plugin_args['qsub_args'])
         if self._qsub_args:
             qsubargs = self._qsub_args
         if '-o' not in qsubargs:

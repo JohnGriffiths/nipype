@@ -5,13 +5,8 @@
 PYTHON ?= python
 NOSETESTS ?= nosetests
 
-zipdoc:
-	@echo "Clean documentation directory."
-	python setup.py clean
-	@echo "Build documentation.zip..."
-	python setup.py build_sphinx
-	@echo "Clean documentation directory."
-	python setup.py clean
+zipdoc: html
+	zip documentation.zip doc/_build/html
 
 sdist: zipdoc
 	@echo "Building source distribution..."
@@ -62,8 +57,8 @@ test-doc:
 	--doctest-fixtures=_fixture doc/
 
 test-coverage:
-	$(NOSETESTS) -s --with-doctest --with-coverage --cover-erase --cover-html \
-	--cover-html-dir=coverage --cover-package=nipype nipype
+	$(NOSETESTS) -s --with-doctest --with-coverage --cover-package=nipype \
+	--config=.coveragerc
 
 test: clean test-code
 
@@ -71,10 +66,12 @@ html:
 	@echo "building docs"
 	make -C doc clean html
 
-check-before-commit: trailing-spaces html test
+specs:
+	@echo "Checking specs and autogenerating spec tests"
+	python tools/checkspecs.py
+
+check-before-commit: trailing-spaces html test specs
 	@echo "removed spaces"
 	@echo "built docs"
 	@echo "ran test"
-
-
-
+	@echo "generated spec tests"

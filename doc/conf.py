@@ -28,16 +28,17 @@ sys.path.append(os.path.abspath('sphinxext'))
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.doctest',
-              #'sphinx.ext.intersphinx',
-              'sphinx.ext.todo',
+extensions = ['sphinx.ext.todo',
               'sphinx.ext.pngmath',
               'sphinx.ext.inheritance_diagram',
               'sphinx.ext.graphviz',
-              'numpydoc',
-              'ipython_console_highlighting',
-              'only_directives',
+              'sphinx.ext.autodoc',
+              'sphinx.ext.doctest',
+              'sphinx.ext.pngmath',
+              'sphinx.ext.autosummary',
+              'numpy_ext.numpydoc',
+              'matplotlib.sphinxext.plot_directive',
+              'matplotlib.sphinxext.only_directives'
               ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -54,7 +55,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'nipype'
-copyright = u'2009-12, Neuroimaging in Python team'
+copyright = u'2009-13, Neuroimaging in Python team'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -166,7 +167,8 @@ html_index = 'index.html'
 
 # Custom sidebar templates, maps document names to template names.
 html_sidebars = {'**': ['gse.html','localtoc.html', 'sidebar_versions.html', 'indexsidebar.html'],
-                 'searchresults' : ['sidebar_versions.html', 'indexsidebar.html']}
+                 'searchresults' : ['sidebar_versions.html', 'indexsidebar.html'],
+                 'version' : []}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.

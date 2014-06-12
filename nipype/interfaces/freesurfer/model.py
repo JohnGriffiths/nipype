@@ -1,6 +1,7 @@
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
-"""The freesurfer module provides basic functions for interfacing with freesurfer tools.
+"""The freesurfer module provides basic functions for interfacing with
+   freesurfer tools.
 
    Change directory to provide relative paths for doctests
    >>> import os
@@ -99,6 +100,7 @@ class MRISPreproc(FSCommand):
     def _list_outputs(self):
         outputs = self.output_spec().get()
         outfile = self.inputs.out_file
+        outputs['out_file'] = outfile
         if not isdefined(outfile):
             outputs['out_file'] = os.path.join(os.getcwd(),
                                    'concat_%s_%s.mgz' % (self.inputs.hemi,
@@ -152,9 +154,9 @@ class GLMFitInputSpec(FSTraitedSpec):
                              xor=['weighted_ls'])
     weight_sqrt = traits.Bool(argstr='--w-sqrt', desc='sqrt of weights',
                               xor=['weighted_ls'])
-    fwhm = traits.Float(min=0, argstr='--fwhm %f',
+    fwhm = traits.Range(low=0.0, argstr='--fwhm %f',
                         desc='smooth input by fwhm')
-    var_fwhm = traits.Float(min=0, argstr='--var-fwhm %f',
+    var_fwhm = traits.Range(low=0.0, argstr='--var-fwhm %f',
                             desc='smooth variance by fwhm')
     no_mask_smooth = traits.Bool(argstr='--no-mask-smooth',
                                  desc='do not mask when smoothing')
@@ -340,9 +342,9 @@ class OneSampleTTest(GLMFit):
 class BinarizeInputSpec(FSTraitedSpec):
     in_file = File(exists=True, argstr='--i %s', mandatory=True,
                   copyfile=False, desc='input volume')
-    min = traits.Float(argstr='--min %f',
+    min = traits.Float(argstr='--min %f', xor=['wm_ven_csf'],
                        desc='min thresh')
-    max = traits.Float(argstr='--max %f',
+    max = traits.Float(argstr='--max %f', xor=['wm_ven_csf'],
                        desc='max thresh')
     rmin = traits.Float(argstr='--rmin %f',
                         desc='compute min based on rmin*globalmean')
@@ -354,7 +356,7 @@ class BinarizeInputSpec(FSTraitedSpec):
          desc='set match vals to 2 and 41 (aseg for cerebral WM)')
     ventricles = traits.Bool(argstr='--ventricles',
          desc='set match vals those for aseg ventricles+choroid (not 4th)')
-    wm_ven_csf = traits.Bool(argstr='--wm+vcsf',
+    wm_ven_csf = traits.Bool(argstr='--wm+vcsf', xor=['min', 'max'],
           desc='WM and ventricular CSF, including choroid (not 4th)')
     binary_file = File(argstr='--o %s', genfile=True,
                   desc='binary output volume')
@@ -428,7 +430,7 @@ class Binarize(FSCommand):
                 outfile = fname_presuffix(self.inputs.in_file,
                                           newpath=os.getcwd(),
                                           suffix='_thresh')
-        outputs['binary_file'] = outfile
+        outputs['binary_file'] = os.path.abspath(outfile)
         value = self.inputs.count_file
         if isdefined(value):
             if isinstance(value, bool):
@@ -678,7 +680,7 @@ class Label2VolInputSpec(FSTraitedSpec):
                                desc='list of label files')
     annot_file = File(exists=True, argstr='--annot %s',
                      xor=('label_file', 'annot_file', 'seg_file', 'aparc_aseg'),
-                     requires=('subjectid', 'hemi'),
+                     requires=('subject_id', 'hemi'),
                      mandatory=True,
                      copyfile=False,
                      desc='surface annotation file')
@@ -711,7 +713,7 @@ class Label2VolInputSpec(FSTraitedSpec):
     proj = traits.Tuple(traits.Enum('abs', 'frac'), traits.Float,
                         traits.Float, traits.Float,
                         argstr='--proj %s %f %f %f',
-                        requries=('subjectid', 'hemi'),
+                        requires=('subject_id', 'hemi'),
                         desc='project along surface normal')
     subject_id = traits.Str(argstr='--subject %s',
                            desc='subject id')
@@ -754,9 +756,12 @@ class Label2Vol(FSCommand):
         outfile = self.inputs.vol_label_file
         if not isdefined(outfile):
             for key in ['label_file', 'annot_file', 'seg_file']:
-                if isdefined(self.inputs.label_file):
-                    _, src = os.path.split(getattr(self.inputs, key))
-            if isdefined(self.inputs.aparcaaseg):
+                if isdefined(getattr(self.inputs,key)):
+                    path = getattr(self.inputs, key)
+                    if isinstance(path,list):
+                        path = path[0]
+                    _, src = os.path.split(path)
+            if isdefined(self.inputs.aparc_aseg):
                 src = 'aparc+aseg.mgz'
             outfile = fname_presuffix(src, suffix='_vol.nii.gz',
                                       newpath=os.getcwd(),
@@ -768,3 +773,84 @@ class Label2Vol(FSCommand):
         if name == 'vol_label_file':
             return self._list_outputs()[name]
         return None
+
+
+class MS_LDAInputSpec(FSTraitedSpec):
+    lda_labels = traits.List(traits.Int(), argstr='-lda %s', mandatory=True,
+                             minlen=2, maxlen=2, sep=' ',
+                             desc='pair of class labels to optimize')
+    weight_file = traits.File(argstr='-weight %s', mandatory=True,
+                        desc='filename for the LDA weights (input or output)')
+    vol_synth_file = traits.File(exists=False, argstr='-synth %s',
+                                 mandatory=True,
+                                 desc=('filename for the synthesized output '
+                                       'volume'))
+    label_file = traits.File(exists=True, argstr='-label %s',
+                             desc='filename of the label volume')
+    mask_file = traits.File(exists=True, argstr='-mask %s',
+                            desc='filename of the brain mask volume')
+    shift = traits.Int(argstr='-shift %d',
+                      desc='shift all values equal to the given value to zero')
+    conform = traits.Bool(argstr='-conform',
+                          desc=('Conform the input volumes (brain mask '
+                                'typically already conformed)'))
+    use_weights = traits.Bool(argstr='-W',
+                              desc=('Use the weights from a previously '
+                                    'generated weight file'))
+    images = InputMultiPath(File(exists=True), argstr='%s', mandatory=True,
+                            copyfile=False, desc='list of input FLASH images',
+                            position=-1)
+
+
+class MS_LDAOutputSpec(TraitedSpec):
+    weight_file = File(exists=True, desc='')
+    vol_synth_file = File(exists=True, desc='')
+
+
+class MS_LDA(FSCommand):
+    """Perform LDA reduction on the intensity space of an arbitrary # of FLASH images
+
+    Examples
+    --------
+
+    >>> grey_label = 2
+    >>> white_label = 3
+    >>> zero_value = 1
+    >>> optimalWeights = MS_LDA(lda_labels=[grey_label, white_label], \
+                                label_file='label.mgz', weight_file='weights.txt', \
+                                shift=zero_value, vol_synth_file='synth_out.mgz', \
+                                conform=True, use_weights=True, \
+                                images=['FLASH1.mgz', 'FLASH2.mgz', 'FLASH3.mgz'])
+    >>> optimalWeights.cmdline
+    'mri_ms_LDA -conform -label label.mgz -lda 2 3 -shift 1 -W -synth synth_out.mgz -weight weights.txt FLASH1.mgz FLASH2.mgz FLASH3.mgz'
+    """
+
+    _cmd = 'mri_ms_LDA'
+    input_spec = MS_LDAInputSpec
+    output_spec = MS_LDAOutputSpec
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        if isdefined(self.inputs.output_synth):
+            outputs['vol_synth_file'] = os.path.abspath(self.inputs.output_synth)
+        else:
+            outputs['vol_synth_file'] = os.path.abspath(self.inputs.vol_synth_file)
+        if not isdefined(self.inputs.use_weights) or self.inputs.use_weights is False:
+            outputs['weight_file'] = os.path.abspath(self.inputs.weight_file)
+        return outputs
+
+    def _verify_weights_file_exists(self):
+        if not os.path.exists(os.path.abspath(self.inputs.weight_file)):
+            raise traits.TraitError("MS_LDA: use_weights must accompany an existing weights file")
+
+    def _format_arg(self, name, spec, value):
+        if name is 'use_weights':
+            if self.inputs.use_weights is True:
+                self._verify_weights_file_exists()
+            else:
+                return ''
+                # TODO: Fix bug when boolean values are set explicitly to false
+        return super(MS_LDA, self)._format_arg(name, spec, value)
+
+    def _gen_filename(self, name):
+        pass

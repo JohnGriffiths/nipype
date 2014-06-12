@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """
@@ -15,15 +16,6 @@ First tell python where to find the appropriate functions.
 """
 
 import os                                    # system functions
-
-"""
-.. note::
-    config for logging should be set before anything else
-"""
-
-from nipype.utils.config import config
-config.set('logging', 'log_to_file', 'false')
-config.set_log_dir(os.getcwd())
 
 import nipype.interfaces.io as nio           # Data i/o
 import nipype.interfaces.fsl as fsl          # fsl
@@ -177,6 +169,7 @@ datasource = pe.Node(interface=nio.DataGrabber(infields=['subject_id'],
 datasource.inputs.base_directory = data_dir
 datasource.inputs.template = '%s/%s.nii'
 datasource.inputs.template_args = info
+datasource.inputs.sort_filelist = True
 
 """
 Use the get_node function to retrieve an internal node by name. Then set the

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """
@@ -538,6 +539,7 @@ datasource = pe.Node(interface=nio.DataGrabber(infields=['subject_id'],
 datasource.inputs.base_directory = data_dir
 datasource.inputs.template = '%s/%s.nii'
 datasource.inputs.template_args = info
+datasource.inputs.sort_filelist = True
 
 """
 Use the get_node function to retrieve an internal node by name. Then set the
@@ -611,7 +613,7 @@ Set up complete workflow
 
 l1pipeline = pe.Workflow(name= "level1")
 l1pipeline.base_dir = os.path.abspath('./fsl/workingdir')
-l1pipeline.config = dict(crashdump_dir=os.path.abspath('./fsl/crashdumps'))
+l1pipeline.config = {"execution": {"crashdump_dir":os.path.abspath('./fsl/crashdumps')}}
 
 l1pipeline.connect([(infosource, datasource, [('subject_id', 'subject_id')]),
                     (infosource, firstlevel, [(('subject_id', subjectinfo), 'modelfit.modelspec.subject_info')]),
@@ -632,7 +634,7 @@ generate any output. To actually run the analysis on the data the
 
 if __name__ == '__main__':
     l1pipeline.write_graph()
-    l1pipeline.run()
+    outgraph = l1pipeline.run()
     #l1pipeline.run(plugin='MultiProc', plugin_args={'n_procs':2})
 
 

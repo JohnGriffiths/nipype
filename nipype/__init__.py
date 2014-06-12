@@ -1,49 +1,56 @@
-# emacs: -*- coding: utf-8; mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set fileencoding=utf-8 ft=python sts=4 ts=4 sw=4 et:
-
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# vi: set ft=python sts=4 ts=4 sw=4 et:
 import os
 
 from info import (LONG_DESCRIPTION as __doc__,
                   URL as __url__,
                   STATUS as __status__,
                   __version__)
+from utils.config import NipypeConfig
+config = NipypeConfig()
+from utils.logger import Logging
+logging = Logging(config)
 
-# We require numpy 1.2 for our test suite.  If Tester fails to import,
-# check the version of numpy the user has and inform them they need to
-# upgrade.
-import numpy as np
 from distutils.version import LooseVersion
-if LooseVersion(np.__version__) >= '1.2':
-    from numpy.testing import Tester
-else:
-    from testing.numpytesting import Tester
 
-class NipypeTester(Tester):
-    def test(self, label='fast', verbose=1, extra_argv=None,
-             doctests=False, coverage=False):
-        # setuptools does a chmod +x on ALL python modules when it
-        # installs.  By default, as a security measure, nose refuses to
-        # import executable files.  To forse nose to execute our tests, we
-        # must supply the '--exe' flag.  List thread on this:
-        # http://www.mail-archive.com/distutils-sig@python.org/msg05009.html
-        if not extra_argv:
-            extra_argv = ['--exe']
-        else:
-            extra_argv.append('--exe')
-        super(NipypeTester, self).test(label, verbose, extra_argv,
-                                       doctests, coverage)
-    # Grab the docstring from numpy
-    #test.__doc__ = Tester.test.__doc__
+from .fixes.numpy.testing import nosetester
 
-test = NipypeTester().test
-bench = NipypeTester().bench
+class _NoseTester(nosetester.NoseTester):
+    """ Subclass numpy's NoseTester to add doctests by default
+    """
+
+    def _get_custom_doctester(self):
+        return None
+
+    def test(self, label='fast', verbose=1, extra_argv=['--exe'],
+             doctests=True, coverage=False):
+        """Run the full test suite
+
+        Examples
+        --------
+        This will run the test suite and stop at the first failing
+        example
+        >>> from nipype import test
+        >>> test(extra_argv=['--exe', '-sx']) #doctest: +SKIP
+        """
+        return super(_NoseTester, self).test(label=label,
+                                             verbose=verbose,
+                                             extra_argv=extra_argv,
+                                             doctests=doctests,
+                                             coverage=coverage)
+
+try:
+    test = _NoseTester(raise_warnings="release").test
+except TypeError:
+    # Older versions of numpy do not have a raise_warnings argument
+    test = _NoseTester().test
+del nosetester
 
 
 def _test_local_install():
     """ Warn the user that running with nipy being
         imported locally is a bad idea.
     """
-    import os
     if os.getcwd() == os.sep.join(
                             os.path.abspath(__file__).split(os.sep)[:-2]):
         import warnings
@@ -54,7 +61,7 @@ _test_local_install()
 
 # Set up package information function
 from pkg_info import get_pkg_info as _get_pkg_info
-get_info = lambda : _get_pkg_info(os.path.dirname(__file__))
+get_info = lambda: _get_pkg_info(os.path.dirname(__file__))
 
 # Cleanup namespace
 del _test_local_install
@@ -62,7 +69,11 @@ del _test_local_install
 # If this file is exec after being imported, the following lines will
 # fail
 try:
-    del version
     del Tester
 except:
     pass
+
+
+from pipeline import Node, MapNode, JoinNode, Workflow
+from interfaces import (DataGrabber, DataSink, SelectFiles,
+                        IdentityInterface, Rename, Function, Select, Merge)

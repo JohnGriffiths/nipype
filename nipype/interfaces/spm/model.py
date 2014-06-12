@@ -14,7 +14,6 @@ and spm to access spm tools.
 __docformat__ = 'restructuredtext'
 
 # Standard library imports
-import logging
 import os
 from glob import glob
 
@@ -30,7 +29,8 @@ from nipype.interfaces.spm.base import (SPMCommand, SPMCommandInputSpec,
 from nipype.utils.filemanip import (filename_to_list, list_to_filename,
                                     split_filename)
 
-logger = logging.getLogger('spmlogger')
+from ... import logging
+logger = logging.getLogger('interface')
 
 
 class Level1DesignInputSpec(SPMCommandInputSpec):
@@ -117,7 +117,7 @@ class Level1Design(SPMCommand):
                 return [val]
             else:
                 return val
-        return val
+        return super(Level1Design, self)._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         """validate spm realign options if set to None ignore
@@ -171,7 +171,7 @@ class EstimateModelOutputSpec(TraitedSpec):
     beta_images = OutputMultiPath(File(exists=True), desc='design parameter estimates')
     residual_image = File(exists=True, desc='Mean-squared image of the residuals')
     RPVimage = File(exists=True, desc='Resels per voxel image')
-    spm_mat_file = File(exist=True, desc='Updated SPM mat file')
+    spm_mat_file = File(exists=True, desc='Updated SPM mat file')
 
 
 class EstimateModel(SPMCommand):
@@ -200,7 +200,7 @@ class EstimateModel(SPMCommand):
                 return {'%s' % val: 1}
             else:
                 return val
-        return val
+        return super(EstimateModel, self)._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         """validate spm realign options if set to None ignore
@@ -280,7 +280,7 @@ class EstimateContrastOutputSpec(TraitedSpec):
     spmT_images = OutputMultiPath(File(exists=True), desc='stat images from a t-contrast')
     ess_images = OutputMultiPath(File(exists=True), desc='contrast images from an F-contrast')
     spmF_images = OutputMultiPath(File(exists=True), desc='stat images from an F-contrast')
-    spm_mat_file = File(exist=True, desc='Updated SPM mat file')
+    spm_mat_file = File(exists=True, desc='Updated SPM mat file')
 
 
 class EstimateContrast(SPMCommand):
@@ -332,9 +332,9 @@ class EstimateContrast(SPMCommand):
             script += "condnames=names;\n"
         else:
             if self.inputs.use_derivs:
-                script += "pat = 'Sn\([0-9*]\) (.*)';\n"
+                script += "pat = 'Sn\([0-9]*\) (.*)';\n"
             else:
-                script += "pat = 'Sn\([0-9*]\) (.*)\*bf\(1\)|Sn\([0-9*]\) .*\*bf\([2-9]\)|Sn\([0-9*]\) (.*)';\n"
+                script += "pat = 'Sn\([0-9]*\) (.*)\*bf\(1\)|Sn\([0-9]*\) .*\*bf\([2-9]\)|Sn\([0-9]*\) (.*)';\n"
             script += "t = regexp(names,pat,'tokens');\n"
             # get sessidx for columns
             script += "pat1 = 'Sn\(([0-9].*)\)\s.*';\n"
@@ -739,7 +739,7 @@ class FactorialDesign(SPMCommand):
         if opt in ['covariates']:
             outlist = []
             mapping = {'name': 'cname', 'vector': 'c',
-                       'interactions': 'iCFI',
+                       'interaction': 'iCFI',
                        'centering': 'iCC'}
             for dictitem in val:
                 outdict = {}
@@ -747,7 +747,7 @@ class FactorialDesign(SPMCommand):
                     outdict[mapping[key]] = keyval
                 outlist.append(outdict)
             return outlist
-        return val
+        return super(FactorialDesign, self)._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         """validate spm realign options if set to None ignore
@@ -893,8 +893,6 @@ class MultipleRegressionDesign(FactorialDesign):
         """
         if opt in ['in_files']:
             return np.array(val, dtype=object)
-        if opt in ['include_intercept']:
-            return int(val)
         if opt in ['user_covariates']:
             outlist = []
             mapping = {'name': 'cname', 'vector': 'c',

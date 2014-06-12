@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 =============================================
 dMRI: Connectivity - MRtrix, CMTK, FreeSurfer
@@ -14,15 +15,18 @@ and tractography, and the Connectome Mapping Toolkit (CMTK) for further parcella
 
 We perform this analysis using the FSL course data, which can be acquired from here:
 
-    http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
+    * http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
 
 This pipeline also requires the Freesurfer directory for 'subj1' from the FSL course data.
 To save time, this data can be downloaded from here:
 
-    http://dl.dropbox.com/u/315714/subj1.zip?dl=1
+    * http://dl.dropbox.com/u/315714/subj1.zip?dl=1
 
 The result of this processing will be the connectome for subj1 as a Connectome File Format (CFF) File, using
-the Lausanne2008 parcellation scheme.
+the Lausanne2008 parcellation scheme. A data package containing the outputs of this pipeline can be obtained
+from here:
+
+    * http://db.tt/909Q3AC1
 
 .. seealso::
 
@@ -52,12 +56,13 @@ import nipype.algorithms.misc as misc
 import nipype.interfaces.cmtk as cmtk
 import nipype.interfaces.dipy as dipy
 import inspect
-import os.path as op                      # system functions
+import os, os.path as op                      # system functions
 from nipype.workflows.dmri.fsl.dti import create_eddy_correct_pipeline
 from nipype.workflows.dmri.camino.connectivity_mapping import select_aparc_annot
 from nipype.utils.misc import package_check
 import warnings
-from nipype.workflows.dmri.connectivity.group_connectivity import pullnodeIDs
+from nipype.workflows.dmri.connectivity.nx import create_networkx_pipeline, create_cmats_to_csv_pipeline
+from nipype.workflows.smri.freesurfer import create_tessellation_flow
 
 try:
     package_check('cmp')
@@ -70,7 +75,7 @@ else:
 This needs to point to the freesurfer subjects directory (Recon-all must have been run on subj1 from the FSL course data)
 Alternatively, the reconstructed subject data can be downloaded from:
 
-	http://dl.dropbox.com/u/315714/subj1.zip
+	* http://dl.dropbox.com/u/315714/subj1.zip
 
 """
 
@@ -78,10 +83,13 @@ subjects_dir = op.abspath(op.join(op.curdir,'./subjects'))
 fs.FSCommand.set_default_subjects_dir(subjects_dir)
 fsl.FSLCommand.set_default_output_type('NIFTI')
 
+fs_dir = os.environ['FREESURFER_HOME']
+lookup_file = op.join(fs_dir,'FreeSurferColorLUT.txt')
+
 """
 This needs to point to the fdt folder you can find after extracting
 
-	http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
+	* http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
 
 """
 
@@ -113,6 +121,7 @@ datasource.inputs.template = "%s/%s"
 datasource.inputs.base_directory = data_dir
 datasource.inputs.field_template = dict(dwi='%s/%s.nii.gz')
 datasource.inputs.template_args = info
+datasource.inputs.sort_filelist = True
 
 """
 The input node and Freesurfer sources declared here will be the main
@@ -131,16 +140,13 @@ FreeSurferSourceRH.inputs.hemi = 'rh'
 """
 Creating the workflow's nodes
 =============================
-"""
 
-"""
 Conversion nodes
 ----------------
-"""
 
-"""
 A number of conversion operations are required to obtain NIFTI files from the FreesurferSource for each subject.
 Nodes are used to convert the following:
+
     * Original structural image to NIFTI
     * Pial, white, inflated, and spherical surfaces for both the left and right hemispheres are converted to GIFTI for visualization in ConnectomeViewer
     * Parcellated annotation files for the left and right hemispheres are also converted to GIFTI
@@ -192,6 +198,7 @@ eddycorrect.inputs.inputnode.ref_num = 1
 
 """
 Tensors are fitted to each voxel in the diffusion-weighted image and from these three maps are created:
+
     * Major eigenvector in each voxel
     * Apparent diffusion coefficient
     * Fractional anisotropy
@@ -264,7 +271,7 @@ The tracts are then used to generate a tract-density image, and they are also co
 
 probCSDstreamtrack = pe.Node(interface=mrtrix.ProbabilisticSphericallyDeconvolutedStreamlineTrack(),name='probCSDstreamtrack')
 probCSDstreamtrack.inputs.inputmodel = 'SD_PROB'
-probCSDstreamtrack.inputs.maximum_number_of_tracks = 150000
+probCSDstreamtrack.inputs.desired_number_of_tracks = 150000
 tracks2prob = pe.Node(interface=mrtrix.Tracks2Prob(),name='tracks2prob')
 tracks2prob.inputs.colour = True
 MRconvert_tracks2prob = MRconvert_fa.clone(name='MRconvert_tracks2prob')
@@ -274,9 +281,7 @@ trk2tdi = pe.Node(interface=dipy.TrackDensityMap(),name='trk2tdi')
 """
 Structural segmentation nodes
 -----------------------------
-"""
 
-"""
 The following node identifies the transformation between the diffusion-weighted
 image and the structural image. This transformation is then applied to the tracts
 so that they are in the same space as the regions of interest.
@@ -306,11 +311,14 @@ specific tracts that connect between user-selected regions.
 Here we choose the Lausanne2008 parcellation scheme, since we are incorporating the CMTK parcellation step.
 """
 
-creatematrix = pe.Node(interface=cmtk.CreateMatrix(), name="CreateMatrix")
+parcellation_name = 'scale500'
 cmp_config = cmp.configuration.PipelineConfiguration()
 cmp_config.parcellation_scheme = "Lausanne2008"
 createnodes = pe.Node(interface=cmtk.CreateNodes(), name="CreateNodes")
 createnodes.inputs.resolution_network_file = cmp_config._get_lausanne_parcellation('Lausanne2008')[parcellation_name]['node_information_graphml']
+
+creatematrix = pe.Node(interface=cmtk.CreateMatrix(), name="CreateMatrix")
+creatematrix.inputs.count_region_intersections = True
 
 """
 Next we define the endpoint of this tutorial, which is the CFFConverter node, as well as a few nodes which use
@@ -321,44 +329,30 @@ look back at the processing parameters that were used.
 
 CFFConverter = pe.Node(interface=cmtk.CFFConverter(), name="CFFConverter")
 CFFConverter.inputs.script_files = op.abspath(inspect.getfile(inspect.currentframe()))
-giftiSurfaces = pe.Node(interface=util.Merge(8), name="GiftiSurfaces")
+giftiSurfaces = pe.Node(interface=util.Merge(9), name="GiftiSurfaces")
 giftiLabels = pe.Node(interface=util.Merge(2), name="GiftiLabels")
 niftiVolumes = pe.Node(interface=util.Merge(3), name="NiftiVolumes")
 fiberDataArrays = pe.Node(interface=util.Merge(4), name="FiberDataArrays")
 gpickledNetworks = pe.Node(interface=util.Merge(2), name="NetworkFiles")
 
 """
-We also create a node to calculate several network metrics on our resulting file, and another CFF converter
+We also create a workflow to calculate several network metrics on our resulting file, and another CFF converter
 which will be used to package these networks into a single file.
 """
 
-ntwkMetrics = pe.Node(interface=cmtk.NetworkXMetrics(), name="NetworkXMetrics")
+networkx = create_networkx_pipeline(name='networkx')
+cmats_to_csv = create_cmats_to_csv_pipeline(name='cmats_to_csv')
 NxStatsCFFConverter = pe.Node(interface=cmtk.CFFConverter(), name="NxStatsCFFConverter")
 NxStatsCFFConverter.inputs.script_files = op.abspath(inspect.getfile(inspect.currentframe()))
 
-Matlab2CSV_node = pe.Node(interface=misc.Matlab2CSV(), name="Matlab2CSV_node")
-Matlab2CSV_global = Matlab2CSV_node.clone(name="Matlab2CSV_global")
-Matlab2CSV_cmatrix = Matlab2CSV_node.clone(name="Matlab2CSV_cmatrix")
-Matlab2CSV_meanfib = Matlab2CSV_node.clone(name="Matlab2CSV_meanfib")
-Matlab2CSV_medianfib = Matlab2CSV_node.clone(name="Matlab2CSV_medianfib")
-Matlab2CSV_fibstd = Matlab2CSV_node.clone(name="Matlab2CSV_fibstd")
-
-MergeCSVFiles_node = pe.Node(interface=misc.MergeCSVFiles(), name="MergeCSVFiles_node")
-rowIDs = pullnodeIDs(op.abspath(cmp_config._get_lausanne_parcellation('Lausanne2008')[parcellation_name]['node_information_graphml']))
-MergeCSVFiles_node.inputs.row_headings = rowIDs
-MergeCSVFiles_node.inputs.extra_column_heading = 'subject'
-mergeCSVMatrices = pe.Node(interface=util.Merge(4), name="mergeCSVMatrices")
-MergeCSVFiles_cmatrices = pe.Node(interface=misc.MergeCSVFiles(), name="MergeCSVFiles_cmatrices")
-MergeCSVFiles_cmatrices.inputs.extra_column_heading = 'subject'
+tessflow = create_tessellation_flow(name='tessflow', out_format='gii')
+tessflow.inputs.inputspec.lookup_file = lookup_file
 
 """
 Connecting the workflow
 =======================
 Here we connect our processing pipeline.
-"""
 
-
-"""
 Connecting the inputs, FreeSurfer nodes, and conversions
 --------------------------------------------------------
 """
@@ -377,6 +371,9 @@ mapping.connect([(inputnode, FreeSurferSourceLH,[("subject_id","subject_id")])])
 
 mapping.connect([(inputnode, FreeSurferSourceRH,[("subjects_dir","subjects_dir")])])
 mapping.connect([(inputnode, FreeSurferSourceRH,[("subject_id","subject_id")])])
+
+mapping.connect([(inputnode, tessflow,[("subjects_dir","inputspec.subjects_dir")])])
+mapping.connect([(inputnode, tessflow,[("subject_id","inputspec.subject_id")])])
 
 mapping.connect([(inputnode, parcellate,[("subjects_dir","subjects_dir")])])
 mapping.connect([(inputnode, parcellate,[("subject_id","subject_id")])])
@@ -433,7 +430,6 @@ mapping.connect([(tensor2fa, MRmult_merge,[("FA","in1")])])
 mapping.connect([(tensor2fa, MRconvert_fa,[("FA","in_file")])])
 
 """
-
 This block creates the rough brain mask to be multiplied, mulitplies it with the
 fractional anisotropy image, and thresholds it to get the single-fiber voxels.
 """
@@ -523,6 +519,7 @@ mapping.connect([(mris_convertLHinflated, giftiSurfaces,[("converted","in5")])])
 mapping.connect([(mris_convertRHinflated, giftiSurfaces,[("converted","in6")])])
 mapping.connect([(mris_convertLHsphere, giftiSurfaces,[("converted","in7")])])
 mapping.connect([(mris_convertRHsphere, giftiSurfaces,[("converted","in8")])])
+mapping.connect([(tessflow, giftiSurfaces,[("outputspec.meshes","in9")])])
 
 mapping.connect([(mris_convertLHlabels, giftiLabels,[("converted","in1")])])
 mapping.connect([(mris_convertRHlabels, giftiLabels,[("converted","in2")])])
@@ -546,44 +543,28 @@ product.
 
 mapping.connect([(giftiSurfaces, CFFConverter,[("out","gifti_surfaces")])])
 mapping.connect([(giftiLabels, CFFConverter,[("out","gifti_labels")])])
-mapping.connect([(creatematrix, CFFConverter,[("matrix_file","gpickled_networks")])])
+mapping.connect([(creatematrix, CFFConverter,[("matrix_files","gpickled_networks")])])
 mapping.connect([(niftiVolumes, CFFConverter,[("out","nifti_volumes")])])
 mapping.connect([(fiberDataArrays, CFFConverter,[("out","data_files")])])
-mapping.connect([(creatematrix, CFFConverter,[("filtered_tractography","tract_files")])])
+mapping.connect([(creatematrix, CFFConverter,[("filtered_tractographies","tract_files")])])
 mapping.connect([(inputnode, CFFConverter,[("subject_id","title")])])
 
 """
-The graph theoretical metrics which have been generated are placed into another CFF file.
+The graph theoretical metrics are computed using the networkx workflow and placed in another CFF file
 """
 
-mapping.connect([(creatematrix, ntwkMetrics,[("matrix_file","in_file")])])
-mapping.connect([(creatematrix, gpickledNetworks,[("matrix_file","in1")])])
-mapping.connect([(ntwkMetrics, gpickledNetworks,[("gpickled_network_files","in2")])])
-mapping.connect([(gpickledNetworks, NxStatsCFFConverter,[("out","gpickled_networks")])])
+mapping.connect([(inputnode, networkx,[("subject_id","inputnode.extra_field")])])
+mapping.connect([(creatematrix, networkx,[("intersection_matrix_file","inputnode.network_file")])])
 
+mapping.connect([(networkx, NxStatsCFFConverter,[("outputnode.network_files","gpickled_networks")])])
 mapping.connect([(giftiSurfaces, NxStatsCFFConverter,[("out","gifti_surfaces")])])
 mapping.connect([(giftiLabels, NxStatsCFFConverter,[("out","gifti_labels")])])
 mapping.connect([(niftiVolumes, NxStatsCFFConverter,[("out","nifti_volumes")])])
 mapping.connect([(fiberDataArrays, NxStatsCFFConverter,[("out","data_files")])])
 mapping.connect([(inputnode, NxStatsCFFConverter,[("subject_id","title")])])
 
-mapping.connect([(ntwkMetrics, Matlab2CSV_node,[("node_measures_matlab","in_file")])])
-mapping.connect([(ntwkMetrics, Matlab2CSV_global,[("global_measures_matlab","in_file")])])
-mapping.connect([(creatematrix, Matlab2CSV_cmatrix,[("matrix_mat_file","in_file")])])
-mapping.connect([(creatematrix, Matlab2CSV_meanfib,[("mean_fiber_length_matrix_mat_file","in_file")])])
-mapping.connect([(creatematrix, Matlab2CSV_medianfib,[("median_fiber_length_matrix_mat_file","in_file")])])
-mapping.connect([(creatematrix, Matlab2CSV_fibstd,[("fiber_length_std_matrix_mat_file","in_file")])])
-mapping.connect([(Matlab2CSV_node, MergeCSVFiles_node,[("csv_files","in_files")])])
-mapping.connect([(inputnode, MergeCSVFiles_node,[("subject_id","out_file")])])
-mapping.connect([(inputnode, MergeCSVFiles_node,[("subject_id","extra_field")])])
-
-mapping.connect([(Matlab2CSV_cmatrix, mergeCSVMatrices,[("csv_files","in1")])])
-mapping.connect([(Matlab2CSV_meanfib, mergeCSVMatrices,[("csv_files","in2")])])
-mapping.connect([(Matlab2CSV_medianfib, mergeCSVMatrices,[("csv_files","in3")])])
-mapping.connect([(Matlab2CSV_fibstd, mergeCSVMatrices,[("csv_files","in4")])])
-mapping.connect([(mergeCSVMatrices, MergeCSVFiles_cmatrices,[("out","in_files")])])
-mapping.connect([(inputnode, MergeCSVFiles_cmatrices,[("subject_id","out_file")])])
-mapping.connect([(inputnode, MergeCSVFiles_cmatrices,[("subject_id","extra_field")])])
+mapping.connect([(inputnode, cmats_to_csv,[("subject_id","inputnode.extra_field")])])
+mapping.connect([(creatematrix, cmats_to_csv,[("matlab_matrix_files","inputnode.matlab_matrix_files")])])
 
 """
 Create a higher-level workflow
@@ -595,7 +576,7 @@ their names to the subject list and their data to the proper folders.
 
 connectivity = pe.Workflow(name="connectivity")
 
-connectivity.base_dir = op.abspath('connectivity_tutorial_advanced')
+connectivity.base_dir = op.abspath('dmri_connectivity_advanced')
 connectivity.connect([
                     (infosource,datasource,[('subject_id', 'subject_id')]),
                     (datasource,mapping,[('dwi','inputnode.dwi'),

@@ -61,7 +61,7 @@ reduce scenario.
 
 You might have also noticed that the iterfield arguments expects a list of input
 names instead of just one name. This suggests that there can be more than one!
-Even thou a bit confusing this is true. You can specify more than one input to 
+Even though a bit confusing this is true. You can specify more than one input to 
 iterate over but the lists that you provide (for all the inputs specified in 
 iterfield) have to have the same length. MapNode will then pair the parameters up
 and run the first instance with first set of parameters and second with second set
@@ -114,7 +114,7 @@ should look like this:
    "A" -> "B3" -> "C3";
 
 Of course you can do it manually by creating copies of all the nodes for 
-different parameter set, but this can be very time consuming, especially when is
+different parameter set, but this can be very time consuming, especially when there
 are more than one node taking inputs from "B". Luckily nipype supports this 
 scenario! Its called iterables and and you use it this way:
 
@@ -142,6 +142,6 @@ Iterables are commonly used to execute the same workflow for many subjects.
 Usually one parametrises DataGrabber node with subject ID. This is achieved by
 connecting an IdentityInterface in front of DataGrabber. When you set iterables of the
 IdentityInterface to the list of subjects IDs, the same workflow will be executed
-for every subject. See :doc:`examples/spm_tutorial` to see this pattern in action.
+for every subject. See :doc:`examples/fmri_spm` to see this pattern in action.
 
 .. include:: ../links_names.txt

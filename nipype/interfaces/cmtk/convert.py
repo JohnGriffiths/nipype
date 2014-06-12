@@ -23,7 +23,6 @@ try:
     package_check('cfflib')
 except Exception, e:
     have_cfflib = False
-    warnings.warn('cfflib not installed')
 else:
     import cfflib as cf
 
@@ -138,7 +137,7 @@ class CFFConverter(BaseInterface):
         count = 0
         if isdefined(self.inputs.tract_files):
             for trk in self.inputs.tract_files:
-                trk_name = 'Tract file {cnt}'.format(cnt=count)
+                _, trk_name, _ = split_filename(trk)
                 ctrack = cf.CTrack(trk_name, trk)
                 a.add_connectome_track(ctrack)
                 count += 1
@@ -204,7 +203,7 @@ class CFFConverter(BaseInterface):
         return outputs
 
 class MergeCNetworksInputSpec(BaseInterfaceInputSpec):
-    in_files = InputMultiPath(File, exists=True, mandatory=True, desc='List of CFF files to extract networks from')
+    in_files = InputMultiPath(File(exists=True), mandatory=True, desc='List of CFF files to extract networks from')
     out_file = File('merged_network_connectome.cff', usedefault = True, desc='Output CFF file with all the networks added')
 
 class MergeCNetworksOutputSpec(TraitedSpec):

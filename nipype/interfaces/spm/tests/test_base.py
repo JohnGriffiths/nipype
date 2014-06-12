@@ -11,6 +11,8 @@ from nipype.testing import (assert_equal, assert_false, assert_true, skipif)
 import nipype.interfaces.spm.base as spm
 from nipype.interfaces.spm import no_spm
 import nipype.interfaces.matlab as mlab
+from nipype.interfaces.spm.base import SPMCommandInputSpec
+from nipype.interfaces.base import traits
 
 try:
     matlab_cmd = os.environ['MATLABCMD']
@@ -64,6 +66,34 @@ def test_use_mfile():
         input_spec = spm.SPMCommandInputSpec
     dc = TestClass()  # dc = derived_class
     yield assert_true, dc.inputs.mfile
+
+
+def test_find_mlab_cmd_defaults():
+    saved_env = dict(os.environ)
+    class TestClass(spm.SPMCommand):
+        pass
+    # test without FORCE_SPMMCR, SPMMCRCMD set
+    for varname in ['FORCE_SPMMCR', 'SPMMCRCMD']:
+        try:
+            del os.environ[varname]
+        except KeyError:
+            pass
+    dc = TestClass()
+    yield assert_equal, dc._use_mcr, None
+    yield assert_equal, dc._matlab_cmd, None
+    # test with only FORCE_SPMMCR set
+    os.environ['FORCE_SPMMCR'] = '1'
+    dc = TestClass()
+    yield assert_equal, dc._use_mcr, True
+    yield assert_equal, dc._matlab_cmd, None
+    # test with both, FORCE_SPMMCR and SPMMCRCMD set
+    os.environ['SPMMCRCMD'] = 'spmcmd'
+    dc = TestClass()
+    yield assert_equal, dc._use_mcr, True
+    yield assert_equal, dc._matlab_cmd, 'spmcmd'
+    # restore environment
+    os.environ.clear();
+    os.environ.update(saved_env)
 
 
 @skipif(no_spm, "SPM not found")
@@ -121,6 +151,21 @@ def test_generate_job():
     out = dc._generate_job(prefix='test', contents=contents)
     yield assert_equal, out, 'test.onsets = {...\n[1, 2, 3, 4];...\n};\n'
 
+def test_bool():
+    class TestClassInputSpec(SPMCommandInputSpec):
+        test_in = include_intercept = traits.Bool(field='testfield')
+
+    class TestClass(spm.SPMCommand):
+        input_spec = TestClassInputSpec
+        _jobtype = 'jobtype'
+        _jobname = 'jobname'
+    dc = TestClass()  # dc = derived_class
+    dc.inputs.test_in = True
+    out = dc._make_matlab_command(dc._parse_inputs())
+    yield assert_equal, out.find('jobs{1}.spm.jobtype.jobname.testfield = 1;') > 0, 1
+    dc.inputs.use_v8struct = False
+    out = dc._make_matlab_command(dc._parse_inputs())
+    yield assert_equal, out.find('jobs{1}.jobtype{1}.jobname{1}.testfield = 1;') > 0, 1
 
 def test_make_matlab_command():
     class TestClass(spm.SPMCommand):
@@ -130,6 +175,9 @@ def test_make_matlab_command():
     dc = TestClass()  # dc = derived_class
     filelist, outdir, cwd = create_files_in_directory()
     contents = {'contents': [1, 2, 3, 4]}
+    script = dc._make_matlab_command([contents])
+    yield assert_true, 'jobs{1}.spm.jobtype.jobname.contents(3) = 3;' in script
+    dc.inputs.use_v8struct = False
     script = dc._make_matlab_command([contents])
     yield assert_true, 'jobs{1}.jobtype{1}.jobname{1}.contents(3) = 3;' in script
     clean_directory(outdir, cwd)

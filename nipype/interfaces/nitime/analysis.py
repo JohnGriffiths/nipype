@@ -13,21 +13,18 @@ Interfaces to functionality from nitime for time-series analysis of fmri data
 import warnings
 import numpy as np
 import tempfile
-from nipype.utils.misc import package_check
-package_check('matplotlib')
+from ...utils.misc import package_check
 
-from nipype.interfaces.base import (TraitedSpec, File, Undefined, traits,
-                                    BaseInterface, isdefined,
-                                    BaseInterfaceInputSpec)
+from ..base import (TraitedSpec, File, Undefined, traits,
+                    BaseInterface, isdefined, BaseInterfaceInputSpec)
 
-from nipype.utils.filemanip import fname_presuffix
+from ...utils.filemanip import fname_presuffix
 
 have_nitime = True
 try:
     package_check('nitime')
 except Exception, e:
     have_nitime = False
-    warnings.warn('nitime not installed')
 else:
     import nitime.analysis as nta
     from nitime.timeseries import TimeSeries
@@ -220,7 +217,6 @@ class CoherenceAnalyzer(BaseInterface):
         self.inputs.output_figure_file
 
         """
-
         if self.inputs.figure_type == 'matrix':
             fig_coh = viz.drawmatrix_channels(self.coherence,
                                 channel_names=self.ROIs,

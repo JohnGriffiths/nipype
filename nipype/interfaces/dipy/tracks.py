@@ -2,21 +2,21 @@
 from nipype.interfaces.base import (TraitedSpec, BaseInterface, BaseInterfaceInputSpec,
                                     File, isdefined, traits)
 from nipype.utils.filemanip import split_filename
-import os, os.path as op
+import os.path as op
 import nibabel as nb, nibabel.trackvis as trk
-import numpy as np
-import logging
 from nipype.utils.misc import package_check
 import warnings
 
-logging.basicConfig()
+from ... import logging
 iflogger = logging.getLogger('interface')
 
+have_dipy = True
 try:
-    package_check('dipy')
-    from dipy.tracking.utils import density_map
+    package_check('dipy', version='0.6.0')
 except Exception, e:
-    warnings.warn('dipy not installed')
+    have_dipy = False
+else:
+    from dipy.tracking.utils import density_map
 
 
 class TrackDensityMapInputSpec(TraitedSpec):

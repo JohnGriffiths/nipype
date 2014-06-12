@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 =======================
 dMRI: DTI - MRtrix, FSL
@@ -6,14 +7,14 @@ dMRI: DTI - MRtrix, FSL
 Introduction
 ============
 
-This script, mrtrix_dti_tutorial.py, demonstrates the ability to perform advanced diffusion analysis
+This script, dmri_mrtrix_dti.py, demonstrates the ability to perform advanced diffusion analysis
 in a Nipype pipeline.
 
     python dmri_mrtrix_dti.py
 
 We perform this analysis using the FSL course data, which can be acquired from here:
 
-    http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
+    * http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
 
 Import necessary modules from nipype.
 """
@@ -26,10 +27,12 @@ import nipype.interfaces.fsl as fsl
 import nipype.algorithms.misc as misc
 import os, os.path as op                     # system functions
 
+fsl.FSLCommand.set_default_output_type('NIFTI')
+
 """
 This needs to point to the fdt folder you can find after extracting
 
-	http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
+	* http://www.fmrib.ox.ac.uk/fslcourse/fsl_course_data2.tar.gz
 
 """
 
@@ -61,6 +64,7 @@ datasource.inputs.template = "%s/%s"
 datasource.inputs.base_directory = data_dir
 datasource.inputs.field_template = dict(dwi='%s/%s.nii.gz')
 datasource.inputs.template_args = info
+datasource.inputs.sort_filelist = True
 
 """
 An inputnode is used to pass the data obtained by the data grabber to the actual processing functions
@@ -69,18 +73,18 @@ An inputnode is used to pass the data obtained by the data grabber to the actual
 inputnode = pe.Node(interface=util.IdentityInterface(fields=["dwi", "bvecs", "bvals"]), name="inputnode")
 
 """
-    Diffusion processing nodes
-    --------------------------
+Diffusion processing nodes
+--------------------------
 
-    .. seealso::
+.. seealso::
 
-    	dmri_connectivity_advanced.py
-    		Tutorial with further detail on using MRtrix tractography for connectivity analysis
+    dmri_connectivity_advanced.py
+        Tutorial with further detail on using MRtrix tractography for connectivity analysis
 
-    	http://www.brain.org.au/software/mrtrix/index.html
-    		MRtrix's online documentation
+    http://www.brain.org.au/software/mrtrix/index.html
+        MRtrix's online documentation
 
-    b-values and b-vectors stored in FSL's format are converted into a single encoding file for MRTrix.
+b-values and b-vectors stored in FSL's format are converted into a single encoding file for MRTrix.
 """
 
 fsl2mrtrix = pe.Node(interface=mrtrix.FSL2MRTrix(),name='fsl2mrtrix')
@@ -90,7 +94,9 @@ Tensors are fitted to each voxel in the diffusion-weighted image and from these 
 	* Major eigenvector in each voxel
 	* Apparent diffusion coefficient
 	* Fractional anisotropy
+
 """
+
 gunzip = pe.Node(interface=misc.Gunzip(), name='gunzip')
 dwi2tensor = pe.Node(interface=mrtrix.DWI2Tensor(),name='dwi2tensor')
 tensor2vector = pe.Node(interface=mrtrix.Tensor2Vector(),name='tensor2vector')
@@ -135,12 +141,12 @@ threshold_wmmask = pe.Node(interface=mrtrix.Threshold(),name='threshold_wmmask')
 threshold_wmmask.inputs.absolute_threshold_value = 0.4
 
 """
-    The spherical deconvolution step depends on the estimate of the response function
-    in the highly anisotropic voxels we obtained above.
+The spherical deconvolution step depends on the estimate of the response function
+in the highly anisotropic voxels we obtained above.
 
-    .. warning::
+.. warning::
 
-    	For damaged or pathological brains one should take care to lower the maximum harmonic order of these steps.
+    For damaged or pathological brains one should take care to lower the maximum harmonic order of these steps.
 
 """
 
@@ -241,7 +247,7 @@ their names to the subject list and their data to the proper folders.
 """
 
 dwiproc = pe.Workflow(name="dwiproc")
-dwiproc.base_dir = os.path.abspath('mrtrix_dti_tutorial')
+dwiproc.base_dir = os.path.abspath('dmri_mrtrix_dti')
 dwiproc.connect([
                     (infosource,datasource,[('subject_id', 'subject_id')]),
                     (datasource,tractography,[('dwi','inputnode.dwi'),

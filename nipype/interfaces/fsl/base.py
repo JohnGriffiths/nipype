@@ -29,9 +29,8 @@ from glob import glob
 import os
 import warnings
 
-from nipype.utils.filemanip import fname_presuffix
-from nipype.interfaces.base import (CommandLine, traits, CommandLineInputSpec,
-                                    isdefined)
+from ...utils.filemanip import fname_presuffix
+from ..base import (CommandLine, traits, CommandLineInputSpec, isdefined)
 
 warn = warnings.warn
 warnings.filterwarnings('always', category=UserWarning)
@@ -73,7 +72,8 @@ class Info(object):
         except KeyError:
             return None
         clout = CommandLine(command='cat',
-                            args='%s/etc/fslversion' % (basedir)).run()
+                            args='%s/etc/fslversion' % (basedir),
+                            terminal_output='allatonce').run()
         out = clout.runtime.stdout
         return out.strip('\n')
 
@@ -113,7 +113,8 @@ class Info(object):
         try:
             return os.environ['FSLOUTPUTTYPE']
         except KeyError:
-            warnings.warn('FSL environment variables not set. setting output type to NIFTI')
+            warnings.warn(('FSL environment variables not set. setting output '
+                           'type to NIFTI'))
             return 'NIFTI'
 
     @staticmethod
@@ -188,6 +189,10 @@ class FSLCommand(CommandLine):
         else:
             raise AttributeError('Invalid FSL output_type: %s' % output_type)
 
+    @property
+    def version(self):
+        return Info.version()
+
     def _gen_fname(self, basename, cwd=None, suffix=None, change_ext=True,
                    ext=None):
         """Generate a filename based on the given parameters.
@@ -234,6 +239,10 @@ class FSLCommand(CommandLine):
                                 use_ext=False, newpath=cwd)
         return fname
 
+    def _overload_extension(self, value, name=None):
+        return value + Info.output_type_to_ext(self.inputs.output_type)
+
+
 
 def check_fsl():
     ver = Info.version()
@@ -248,7 +257,7 @@ def no_fsl():
     used with skipif to skip tests that will
     fail if FSL is not installed"""
 
-    if Info.version() == None:
+    if Info.version() is None:
         return True
     else:
         return False

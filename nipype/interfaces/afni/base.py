@@ -6,24 +6,20 @@
 import os
 import warnings
 
-from ...utils.filemanip import fname_presuffix
-from ..base import (CommandLine, traits, CommandLineInputSpec, isdefined)
+from ...utils.filemanip import split_filename
+from ..base import (
+    CommandLine, traits, CommandLineInputSpec, isdefined, File, TraitedSpec)
 
 warn = warnings.warn
 warnings.filterwarnings('always', category=UserWarning)
 
-###################################
-#
-# NEW_AFNI base class
-#
-###################################
 
 class Info(object):
     """Handle afni output type and version information.
     """
-    __outputtype = 'NIFTI_GZ'
+    __outputtype = 'AFNI'
     ftypes = {'NIFTI': '.nii',
-              'AFNI': '.BRIK',
+              'AFNI': '',
               'NIFTI_GZ': '.nii.gz'}
 
     @staticmethod
@@ -40,7 +36,8 @@ class Info(object):
            Version number as string or None if AFNI not found
 
         """
-        clout = CommandLine(command='afni_vcheck').run()
+        clout = CommandLine(command='afni_vcheck',
+                            terminal_output='allatonce').run()
         out = clout.runtime.stdout
         return out.split('\n')[1]
 
@@ -69,7 +66,7 @@ class Info(object):
     def outputtype(cls):
         """AFNI has no environment variables,
         Output filetypes get set in command line calls
-        Nipype uses NIFTI_GZ as default
+        Nipype uses AFNI as default
 
 
         Returns
@@ -78,15 +75,15 @@ class Info(object):
         """
         #warn(('AFNI has no environment variable that sets filetype '
         #      'Nipype uses NIFTI_GZ as default'))
-        return 'NIFTI_GZ'
-
+        return 'AFNI'
 
     @staticmethod
     def standard_image(img_name):
         '''Grab an image from the standard location.
 
         Could be made more fancy to allow for more relocatability'''
-        clout = CommandLine('which afni').run()
+        clout = CommandLine('which afni',
+                            terminal_output='allatonce').run()
         if clout.runtime.returncode is not 0:
             return None
 
@@ -95,18 +92,23 @@ class Info(object):
         return os.path.join(basedir, img_name)
 
 
-class AFNITraitedSpec(CommandLineInputSpec):
-    outputtype =  traits.Enum('NIFTI_GZ', Info.ftypes.keys(),
-                              desc = 'AFNI output filetype')
+class AFNICommandInputSpec(CommandLineInputSpec):
+    outputtype = traits.Enum('AFNI', Info.ftypes.keys(),
+                             desc='AFNI output filetype')
+    out_file = File(name_template="%s_afni", desc='output image file name',
+                    argstr='-prefix %s',
+                    name_source=["in_file"])
+
+class AFNICommandOutputSpec(TraitedSpec):
+    out_file = File(desc='output file',
+                    exists=True)
 
 
 class AFNICommand(CommandLine):
-    """General support for AFNI commands. Every AFNI command accepts 'outputtype' input. For example:
-    afni.Threedsetup(outputtype='NIFTI_GZ')
-    """
 
-    input_spec = AFNITraitedSpec
+    input_spec = AFNICommandInputSpec
     _outputtype = None
+
 
     def __init__(self, **inputs):
         super(AFNICommand, self).__init__(**inputs)
@@ -127,9 +129,8 @@ class AFNICommand(CommandLine):
         """
         self._outputtype = self.inputs.outputtype
 
-
     @classmethod
-    def set_default_outputtype(cls, outputtype):
+    def set_default_output_type(cls, outputtype):
         """Set the default output type for AFNI classes.
 
         This method is used to set the default output type for all afni
@@ -143,47 +144,18 @@ class AFNICommand(CommandLine):
         else:
             raise AttributeError('Invalid AFNI outputtype: %s' % outputtype)
 
-    def _gen_fname(self, basename, cwd=None, suffix='_afni', change_ext=True):
-        """Generate a filename based on the given parameters.
+    def _overload_extension(self, value, name=None):
+        path, base, _ = split_filename(value)
+        return os.path.join(path, base + Info.outputtype_to_ext(self.inputs.outputtype))
 
-        The filename will take the form: cwd/basename<suffix><ext>.
-        If change_ext is True, it will use the extensions specified in
-        <instance>inputs.outputtype.
-
-        Parameters
-        ----------
-        basename : str
-            Filename to base the new filename on.
-        cwd : str
-            Path to prefix to the new filename. (default is os.getcwd())
-        suffix : str
-            Suffix to add to the `basename`.  (default is '_fsl')
-        change_ext : bool
-            Flag to change the filename extension to the FSL output type.
-            (default True)
-
-        Returns
-        -------
-        fname : str
-            New filename based on given parameters.
-
-        """
-
-        if basename == '':
-            msg = 'Unable to generate filename for command %s. ' % self.cmd
-            msg += 'basename is not set!'
-            raise ValueError(msg)
-        if cwd is None:
-            cwd = os.getcwd()
-        ext = Info.outputtype_to_ext(self.inputs.outputtype)
-        if change_ext:
-            if suffix:
-                suffix = ''.join((suffix, ext))
-            else:
-                suffix = ext
-        fname = fname_presuffix(basename, suffix = suffix,
-                                use_ext = False, newpath = cwd)
-        return fname
-
-
-
+    def _list_outputs(self):
+        outputs = super(AFNICommand, self)._list_outputs()
+        metadata = dict(name_source=lambda t: t is not None)
+        out_names = self.inputs.traits(**metadata).keys()
+        if out_names:
+            for name in out_names:
+                if outputs[name]:
+                    _,_,ext = split_filename(outputs[name])
+                    if ext == "":
+                        outputs[name] = outputs[name] + "+orig.BRIK"
+        return outputs

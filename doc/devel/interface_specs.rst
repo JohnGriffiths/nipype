@@ -1,10 +1,18 @@
+.. _interface_specs:
+
 ========================
 Interface Specifications
 ========================
 
 Before you start
 ----------------
-Nipype is a young project maintained by an enthusiastic group of developers. Even though the documentation might be sparse or cryptic at times we strongly encourage you to contact us on the official nipype developers mailing list in case of any troubles: nipy-devel@neuroimaging.scipy.org (we are sharing a mailing list with the nipy community therefore please add ``[nipype]`` to the messsage title).
+
+Nipype is a young project maintained by an enthusiastic group of developers.
+Even though the documentation might be sparse or cryptic at times we strongly
+encourage you to contact us on the official nipype developers mailing list in
+case of any troubles: nipy-devel@neuroimaging.scipy.org (we are sharing a
+mailing list with the nipy community therefore please add ``[nipype]`` to the
+messsage title).
 
 
 Overview
@@ -194,6 +202,12 @@ Common
 	    TraitError: The 'infile' trait of a BetInputSpec instance must be a file 
 	    name, but a value of 'does_not_exist.nii' <type 'str'> was specified.
 	    
+``hash_files``
+	To be used with inputs that are defining output filenames. When this flag
+	is set to false any Nipype will not try to hash any files described by this
+	input. This is useful to avoid rerunning when the specified output file
+	already exists and has changed.
+	    
 ``desc``
 	All trait objects have a set of default metadata attributes.  ``desc``
 	is one of those and is used as a simple, one-line docstring.  The
@@ -259,7 +273,50 @@ Common
 	can be set to either `True` or `False`. `False` indicates that contents 
 	should be symlinked, while `True` indicates that the contents should be 
 	copied over.
-	
+
+``min_ver`` and ``max_ver``
+    These metadata determine if a particular trait will be available when a
+    given version of the underlying interface runs. Note that this check is
+    performed at runtime.::
+
+	    class RealignInputSpec(BaseInterfaceInputSpec):
+	        jobtype = traits.Enum('estwrite', 'estimate', 'write', min_ver='5',
+	                              usedefault=True)
+``deprecated`` and ``new_name``
+    This is metadata for removing or renaming an input field from a spec.::
+
+        class RealignInputSpec(BaseInterfaceInputSpec):
+            jobtype = traits.Enum('estwrite', 'estimate', 'write',
+                                  deprecated='0.8',
+                                  desc='one of: estimate, write, estwrite',
+                                  usedefault=True)
+
+    In the above example this means that the `jobtype` input is deprecated and
+    will be removed in version 0.8. Deprecation should be set to two versions
+    from current release. Raises `TraitError` after package version crosses the
+    deprecation version.
+
+    For inputs that are being renamed, one can specify the new name of the
+    field.::
+
+        class RealignInputSpec(BaseInterfaceInputSpec):
+            jobtype = traits.Enum('estwrite', 'estimate', 'write',
+                                  deprecated='0.8', new_name='job_type',
+                                  desc='one of: estimate, write, estwrite',
+                                  usedefault=True)
+            job_type = traits.Enum('estwrite', 'estimate', 'write',
+                                  desc='one of: estimate, write, estwrite',
+                                  usedefault=True)
+
+    In the above example, the `jobtype` field is being renamed to `job_type`.
+    When `new_name` is provided it must exist as a trait, otherwise an exception
+    will be raised.
+
+.. note::
+
+   The version information for `min_ver`, `max_ver` and `deprecated` has to be
+   provided as a string. For example, `min_ver='0.1'`.
+
 CommandLine
 ^^^^^^^^^^^
 
@@ -297,7 +354,19 @@ CommandLine
 	
 ``sep``
 	For List traits the string with witch elements of the list will be joined.
-	
+
+``name_source``
+    Indicates the list of input fields from which the value of the current File
+    output variable will be drawn. This input field must be the name of a File.
+
+``name_template``
+    By default a ``%s_generated`` template is used to create the output
+    filename. This metadata keyword allows overriding the generated name.
+
+``keep_extension``
+     Use this and set it ``True`` if you want the extension from the input to be
+     kept.
+
 SPM
 ^^^
 
@@ -339,32 +408,36 @@ And optionally:
 
 For example this is the class definition for Flirt, minus the docstring::
 
-    class Flirt(NEW_FSLCommand):
+    class FLIRTInputSpec(FSLCommandInputSpec):
+        in_file = File(exists=True, argstr='-in %s', mandatory=True,
+                       position=0, desc='input file')
+        reference = File(exists=True, argstr='-ref %s', mandatory=True,
+                         position=1, desc='reference file')
+        out_file = File(argstr='-out %s', desc='registered output file',
+                        name_source=['in_file'], name_template='%s_flirt',
+                        position=2, hash_files=False)
+        out_matrix_file = File(argstr='-omat %s',
+                               name_source=['in_file'], keep_extension=True,
+                               name_template='%s_flirt.mat',
+                               desc='output affine matrix in 4x4 asciii format',
+                               position=3, hash_files=False)
+        out_log = File(name_source=['in_file'], keep_extension=True,
+                       requires=['save_log'],
+                       name_template='%s_flirt.log', desc='output log')
+        ...
+
+    class FLIRTOutputSpec(TraitedSpec):
+        out_file = File(exists=True,
+                        desc='path/name of registered file (if generated)')
+        out_matrix_file = File(exists=True,
+                               desc='path/name of calculated affine transform '
+                               '(if generated)')
+        out_log = File(desc='path/name of output log (if generated)')
+
+    class Flirt(FSLCommand):
         _cmd = 'flirt'
         input_spec = FlirtInputSpec
         output_spec = FlirtOutputSpec
-
-        def _list_outputs(self):
-            outputs = self.output_spec().get()
-            outputs['outfile'] = self.inputs.outfile
-            # Generate an outfile if one is not provided
-            if not isdefined(outputs['outfile']) and isdefined(self.inputs.infile):
-                outputs['outfile'] = self._gen_fname(self.inputs.infile,
-                                                     suffix = '_flirt')
-            outputs['outmatrix'] = self.inputs.outmatrix
-            # Generate an outmatrix file if one is not provided
-            if not isdefined(outputs['outmatrix']) and \
-                    isdefined(self.inputs.infile):
-                outputs['outmatrix'] = self._gen_fname(self.inputs.infile,
-                                                       suffix = '_flirt.mat',
-                                                       change_ext = False)
-            return outputs
-
-        def _gen_filename(self, name):
-            if name in ('outfile', 'outmatrix'):
-                return self._list_outputs()[name]
-            else:
-                return None
 
 There are two possible output files ``outfile`` and ``outmatrix``,
 both of which can be generated if not specified by the user.
